@@ -8,23 +8,23 @@ web
 
 ## Users
 
-Primary users are the members of one household on a trusted home LAN — deliberately non-technical people (including kids on phones/tablets) who want a title in their media library without learning anything about Radarr, Sonarr, quality profiles, or root folders. They browse and add **anonymously** (v1.1: no member accounts; admin-only login).
+Primary users are the members of one household on a trusted home LAN: deliberately non-technical people (including kids on phones/tablets) who want a title in their media library without learning anything about Radarr, Sonarr, quality profiles, or root folders. They browse and add **anonymously** (v1.1: no member accounts; admin-only login).
 
 The secondary user is the household's self-hoster admin: technically comfortable, runs the server on a home machine, and wants exact control over what "Add" means plus curated day-to-day acquisition management.
 
 ## Product Purpose
 
-Addarr is a thin, safe front door to Radarr and Sonarr. Members type a title, see a poster grid, tap **Add** — done, with a live `queued → downloading → available` status afterward. Admins define exactly what Add does (presets) and get curated operational screens (library, queue, history, exclusions, blocklist, calendar, a small allow-list of commands) plus a read-only API passthrough as an escape hatch. Success: a non-technical household member can add a movie or series in one tap, unsupervised, without being able to break anything.
+Addarr is a thin, safe front door to Radarr and Sonarr. Members type a title, see a poster grid, tap **Add**; a live `queued → downloading → available` status shows up afterward. Admins define exactly what Add does (presets) and get curated operational screens (library, queue, history, exclusions, blocklist, calendar, a small allow-list of commands) plus a read-only API passthrough as an escape hatch. Success: a non-technical household member can add a movie or series in one tap, unsupervised, without being able to break anything.
 
 ## Positioning
 
-Not Ombi/Overseerr (no approval/request workflow — a household doesn't need gatekeeping) and not the raw *arr UIs (jargon, destructive power). The mechanism a neighbor can't truthfully copy: **one-tap adds whose entire behavior is preset-defined by the admin, with the *arr API keys held server-side and only a read-only, allow-listed passthrough exposed** — deep admin power without ever handing the browser (or the household) the keys to a destructive API.
+Not Ombi/Overseerr (no approval/request workflow — a household doesn't need gatekeeping) and not the raw *arr UIs (jargon, destructive power). The mechanism a neighbor can't truthfully copy: **one-tap adds whose entire behavior is preset-defined by the admin, with the *arr API keys held server-side and only a read-only, allow-listed passthrough exposed**: deep admin power without ever handing the browser (or the household) the keys to a destructive API.
 
 ## Operating Context
 
 - Runs as a single Node process on a home machine; `npm start` is the whole deploy. LAN-only by design (localhost bind by default; opt-in LAN share with mDNS/Bonjour broadcast as "Addarr"). Remote access = Tailscale/WireGuard, never app hardening. No HTTPS, by design.
 - Members use browsers on phones, tablets, and desktops across the LAN at `http://<host>:4545` (`addarr.local` via discovery).
-- Radarr 4+ / Sonarr 3+ (API v3) are the connected backends; each is optional — the app works with either or both.
+- Radarr 4+ / Sonarr 3+ (API v3) are the connected backends; each is optional; the app works with either or both.
 - First-run flow: setup wizard (admin username + 4–6 digit PIN) → connect *arr instances → done; members need no onboarding.
 - Data lives in one SQLite file (`data/addarr.db`); backing up that file backs up the whole app.
 
@@ -32,8 +32,8 @@ Not Ombi/Overseerr (no approval/request workflow — a household doesn't need ga
 
 - **Member mode:** search → poster grid → one Add button using the default preset; "In library ✓" badge; polled status badge after adding. Lookup responses are trimmed server-side so *arr internals never leak.
 - **Admin presets:** quality profile, root folder, monitored, tags, minimum availability, search-on-add, (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
-- **Operations console:** curated screens only — typed-confirmation deletes, hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`); no free-form commands. Read-only passthrough (`GET /arrapi/...`) blocks all write verbs structurally.
-- **Auth:** admin PIN login, 12-hour session; members anonymous; activity log records who added what (attribution is a known gap for anonymous adds — see open decisions).
+- **Operations console:** curated screens only, with typed-confirmation deletes and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`); no free-form commands. Read-only passthrough (`GET /arrapi/...`) blocks all write verbs structurally.
+- **Auth:** admin PIN login, 12-hour session; members anonymous; activity log records who added what (attribution is a known gap for anonymous adds; see open decisions).
 - **Hard constraints:** API keys never reach the client; no raw write passthrough; no internet exposure; no media-server auth integration; no legacy *arr API v2.
 - **Open decisions:** whether adds should eventually support member-facing preset choice or 4K instance routing (services table already supports it); how (or whether) to attribute anonymous adds in the activity log beyond IP.
 
@@ -45,7 +45,7 @@ Not Ombi/Overseerr (no approval/request workflow — a household doesn't need ga
 ## Evidence on Hand
 
 - Fully implemented v1 + v1.1 codebase (M1–M5 smoke-tested): `src/routes/` (search, presets, console, activity, settings, setup, login), `src/app.css` token sheet, `PLAN.md` architecture and decision history.
-- No testimonials, press, case studies, or marketing assets exist or should be fabricated — this is personal self-hosted software.
+- No testimonials, press, case studies, or marketing assets exist or should be fabricated; this is personal self-hosted software.
 
 ## Product Principles
 

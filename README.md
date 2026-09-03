@@ -1,16 +1,16 @@
 # Addarr
 
-One-tap movie & series adds for Radarr and Sonarr. Built for the home LAN: non-technical household members search for a title and tap **Add** — done. An admin configures exactly what "Add" means and gets deep, curated control over the *arr instances.
+One-tap movie & series adds for Radarr and Sonarr. Built for the home LAN: non-technical household members search for a title and tap **Add**. Done. An admin configures exactly what "Add" means and gets deep, curated control over the *arr instances.
 
 The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side (SQLite) and never reach the client.
 
 ## Features
 
-- **Member mode** — search box → poster grid → one **Add** button, no account needed. "In library ✓" badge, live acquisition status after adding: `queued → downloading → importing → available`, plus paused/partial states, with a progress bar and time-left on the poster.
-- **Admin presets** — define what Add does per service: quality profile, root folder, monitored, tags, minimum availability, search-on-add, and (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
-- **Operations console** — curated screens for day-to-day acquisition: library edit/delete (typed confirmation), queue, history, import exclusions, blocklist, calendar, and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`). No free-form commands.
-- **Read-only passthrough** — `GET /arrapi/:service/<allow-listed path>` to inspect any payload the curated UI doesn't show. Write verbs are structurally blocked.
-- **Activity log** — who added what, when, plus admin actions.
+- **Member mode:** search box → poster grid → one **Add** button, no account needed. "In library ✓" badge, live acquisition status after adding: `queued → downloading → importing → available`, plus paused/partial states, with a progress bar and time-left on the poster.
+- **Admin presets** define what Add does per service: quality profile, root folder, monitored, tags, minimum availability, search-on-add, and (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
+- **Operations console:** curated screens for day-to-day acquisition: library edit/delete (typed confirmation), queue, history, import exclusions, blocklist, calendar, and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`). No free-form commands.
+- **Read-only passthrough:** `GET /arrapi/:service/<allow-listed path>` to inspect any payload the curated UI doesn't show. Write verbs are structurally blocked.
+- **Activity log:** who added what, when, plus admin actions.
 
 ## Stack
 
@@ -20,10 +20,10 @@ Node.js + TypeScript, SvelteKit (SSR), SQLite (`node:sqlite`, zero native deps).
 
 ### Requirements
 
-- **Node.js 22.5 or newer** (an LTS release is fine) — the only hard requirement. Check with `node -v`.
-- **Git** — *optional*, only if you want to clone or update via git. Downloading a ZIP works just as well.
+- **Node.js 22.5 or newer** (an LTS release is fine), the only hard requirement. Check with `node -v`.
+- **Git**, *optional*; only needed if you want to clone or update via git. Downloading a ZIP works just as well.
 
-No database server, no build tools, no containers — everything else is handled by `npm start`, which installs dependencies, builds, and serves in one go.
+No database server, no build tools, no containers; `npm start` handles everything else, installing dependencies, building, and serving in one go.
 
 ### 1. Install Node.js
 
@@ -50,7 +50,7 @@ curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
-(Fedora: `sudo dnf install nodejs` — or use [nvm](https://github.com/nvm-sh/nvm) on any distro to get the latest Node.)
+(Fedora: `sudo dnf install nodejs`; or use [nvm](https://github.com/nvm-sh/nvm) on any distro to get the latest Node.)
 
 ### 2. Get the code
 
@@ -90,14 +90,14 @@ npm run dev                        # development mode with hot reload
 
 ### Sharing on your LAN (broadcasting)
 
-By default Addarr binds to `localhost` only — nothing else on the network can reach it. To share it, sign in as admin and go to **Settings → Network → Share on LAN**. When enabled, Addarr:
+By default Addarr binds to `localhost` only, so nothing else on the network can reach it. To share it, sign in as admin and go to **Settings → Network → Share on LAN**. When enabled, Addarr:
 
 - becomes reachable from other devices at `http://<your-machine-ip>:4545` (the address is printed in the startup log), and
 - broadcasts itself over mDNS/Bonjour as **"Addarr"**, so it shows up in network discovery (e.g. Safari's Bonjour list or an Avahi browser).
 
 Enabling the setting takes effect for discovery immediately; if the server was started in localhost-only mode, one restart is needed to open the network bind — the app tells you when that's the case.
 
-For headless setups you can also force it at startup: `npm start -- --lan` (or `ADDARR_LAN=1`), which overrides the in-app setting until restart. `HOST=<addr>` binds a specific interface. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs — discovery just won't work.
+For headless setups you can also force it at startup: `npm start -- --lan` (or `ADDARR_LAN=1`), which overrides the in-app setting until restart. `HOST=<addr>` binds a specific interface. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs; discovery just won't work.
 
 Data (users, sessions, connections, presets, activity log) lives in one SQLite file, `data/addarr.db` by default. Back that file up and you've backed up the whole app.
 
@@ -105,11 +105,11 @@ Data (users, sessions, connections, presets, activity log) lives in one SQLite f
 
 1. Open `http://<host>:4545` → you're redirected to **Setup**: create the admin account (username + 4–6 digit PIN).
 2. **Settings** → connect Radarr and Sonarr (URL + API key). A capability probe verifies the version before saving, and a usable default preset is created automatically from the instance's first quality profile / root folder.
-3. Hand the household the URL — that's it. **Members need no account**: they search and add anonymously. Only signing into Settings/Console asks for the admin PIN (12-hour sessions, with a failed-attempt backoff against PIN guessing).
+3. Hand the household the URL; that's it. **Members need no account**: they search and add anonymously. Only signing into Settings/Console asks for the admin PIN (12-hour sessions, with a failed-attempt backoff against PIN guessing).
 
 ## LAN only
 
-Addarr is designed for trusted networks. LAN access is opt-in (see **Sharing on your LAN** above) — use Tailscale/WireGuard for remote access; there is no HTTPS hardening built in, by design.
+Addarr is designed for trusted networks. LAN access is opt-in (see **Sharing on your LAN** above). For remote access, use Tailscale or WireGuard; there is no HTTPS hardening built in, by design.
 
 ## API surface (internal)
 

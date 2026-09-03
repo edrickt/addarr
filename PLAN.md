@@ -1,8 +1,8 @@
-# Addarr — Project Plan
+# Addarr: Project Plan
 
 A small self-hosted web app for the home LAN. Non-technical household members search for movies and series and add them to Radarr/Sonarr in one tap. An admin mode configures exactly what "add" does and provides deep, curated control over the *arr instances.
 
-Status: **v1.2 complete — M1–M6 implemented and smoke-tested.** v1.1: anonymous member access, admin-only login; visual restyle to light "Precision" theme. v1.2: real acquisition states on poster cards (server-normalized status API: queued/downloading/importing/partial/paused/attention/missing/unreleased, poster progress bar, adaptive polling), admin-only server restart with graceful self-restart and port takeover, LAN sharing toggle in Settings, first-run onboarding handoff (setup → connect → default preset), full mobile adaptation (safe areas, 44px touch targets, no iOS focus zoom), and a technical audit + hardening pass (login attempt backoff, no silent fetch failures, watch-detail strip fix). Visual style: "Precision" theme, light colorway — near-white semantic-token palette, top-bar app shell, Inter (self-hosted), sharp corners, light font weights, hairline structure, mono numerals, console KPI strip, no emojis. Architecture validated by a 3-advisor council (see session memo); API facts verified against Radarr/Sonarr source and v3 swagger docs.
+Status: **v1.2 complete, M1–M6 implemented and smoke-tested.** v1.1: anonymous member access, admin-only login; visual restyle to light "Precision" theme. v1.2: real acquisition states on poster cards (server-normalized status API: queued/downloading/importing/partial/paused/attention/missing/unreleased, poster progress bar, adaptive polling), admin-only server restart with graceful self-restart and port takeover, LAN sharing toggle in Settings, first-run onboarding handoff (setup → connect → default preset), full mobile adaptation (safe areas, 44px touch targets, no iOS focus zoom), and a technical audit + hardening pass (login attempt backoff, no silent fetch failures, watch-detail strip fix). Visual style: "Precision" theme in a light colorway with near-white semantic-token palette, top-bar app shell, self-hosted Inter, sharp corners, light font weights, hairline structure, mono numerals, console KPI strip, and no emojis. Architecture validated by a 3-advisor council (see session memo); API facts verified against Radarr/Sonarr source and v3 swagger docs.
 
 ---
 
@@ -10,7 +10,7 @@ Status: **v1.2 complete — M1–M6 implemented and smoke-tested.** v1.1: anonym
 
 ### Goals
 - **Dead-simple member UX:** type a title, see posters, tap "Add." Done. No accounts ceremony, no approval queue, no jargon.
-- **Admin presets:** the admin defines what "Add" means — quality profile, root folder, monitored, tags, minimum availability, and whether a search starts immediately (`addOptions.searchForMovie` / `addOptions.searchForMissingEpisodes`).
+- **Admin presets:** the admin defines what "Add" means (quality profile, root folder, monitored, tags, minimum availability) and whether a search starts immediately (`addOptions.searchForMovie` / `addOptions.searchForMissingEpisodes`).
 - **Deep admin mode:** curated screens for everything that affects *acquisition*, plus a **read-only API passthrough** as a power escape hatch. Radarr/Sonarr settings screens stay reachable in a frame/link.
 - **Single deployable:** one process, one config file, one container.
 
@@ -39,16 +39,16 @@ Addarr server (single Node process)
 
 Principles:
 1. **The browser only ever talks to Addarr.** Arr API keys never leave the server.
-2. **Addarr owns the user model.** Radarr/Sonarr have a single all-powerful shared API key and no per-user accounts — so all auth/roles live here.
+2. **Addarr owns the user model.** Radarr/Sonarr have a single all-powerful shared API key and no per-user accounts, so all auth/roles live here.
 3. **One module per arr service** (`src/lib/arr/radarr.ts`, `src/lib/arr/sonarr.ts`). Resource shapes differ enough that a shared abstraction leaks; thin adapters keep version-drift fixes local.
 4. **Startup capability probe:** on connect, call `GET /api/v3/system/status`, record app version, fail loudly with a friendly message if unsupported.
 
-### Stack (decision D1 — default chosen, confirm to override)
+### Stack (decision D1: default chosen, confirm to override)
 
 | Layer | Choice | Why |
 |---|---|---|
 | Runtime | Node.js + TypeScript | one language, huge ecosystem, reviewer's concrete recommendation |
-| Framework | SvelteKit (SSR) | server routes double as the internal API; minimal client JS — right size for "search box + forms" |
+| Framework | SvelteKit (SSR) | server routes double as the internal API; minimal client JS, right size for "search box + forms" |
 | DB | SQLite via better-sqlite3 | zero-config, file-based, one container |
 | Styling | Plain CSS with semantic tokens | zero deps, full control for a minimal dashboard look |
 | Deploy | Single command launch: `npm start` (install + build + `node build`) | zero-deploy, OS-agnostic |
@@ -57,14 +57,14 @@ Rejected alternates: FastAPI/Go backends (fine, but two runtimes or more boilerp
 
 ---
 
-## 3. Users and auth (decision D2/D3 — defaults chosen)
+## 3. Users and auth (decision D2/D3: defaults chosen)
 
 **v1.1 change:** members browse and add anonymously (no accounts); only the admin signs in. Section kept for history:
 
 Two roles, local accounts only:
 
-- **Admin** — full control panel, preset management, arr connection settings.
-- **Member** — search and add. Nothing else.
+- **Admin:** full control panel, preset management, arr connection settings.
+- **Member:** search and add. Nothing else.
 
 Auth: username + 4–6 digit PIN (household-friendly), argon2-hashed, server-side session cookie. First-run wizard creates the admin account. Members are seeded by the admin (no self-registration).
 
@@ -94,14 +94,14 @@ activity_log   (id, user_id, service_id, action, arr_item_id, title,
                 payload_json, created_at)          -- "who added what, when"
 ```
 
-- Every add records an `activity_log` row — cheap and answers "who added this?"
+- Every add records an `activity_log` row, which cheaply answers "who added this?"
 - Presets are per-service; the default preset is what the member "Add" button uses. Admin can expose multiple presets later (v2).
 
 ---
 
 ## 5. Member experience
 
-**Flow:** search box → debounced lookup → poster grid (title, year, poster, status badge) → **one Add button on the card** (uses default preset) → confirmation toast → done. Cards already in the library show a live acquisition state instead of an Add button: `waiting → queued → downloading → importing → available`, plus `partial` (some episodes on disk), `paused`, `attention` (admin-visible problem states render as a neutral "Waiting" for members), `missing`, `unreleased` — with a progress bar and a time-left detail strip while downloading. A grid-wide self-scheduling poller refreshes badges every 5 s while anything is downloading, 20 s otherwise.
+**Flow:** search box → debounced lookup → poster grid (title, year, poster, status badge) → **one Add button on the card** (uses default preset) → confirmation toast → done. Cards already in the library show a live acquisition state instead of an Add button: `waiting → queued → downloading → importing → available`, plus `partial` (some episodes on disk), `paused`, `attention` (admin-visible problem states render as a neutral "Waiting" for members), `missing`, `unreleased`, with a progress bar and a time-left detail strip while downloading. A grid-wide self-scheduling poller refreshes badges every 5 s while anything is downloading, 20 s otherwise.
 
 Internal routes (all member-facing, all server-side):
 
@@ -113,9 +113,9 @@ Internal routes (all member-facing, all server-side):
 
 Member rules:
 - Lookup results are trimmed to poster card fields (no arr internals leak).
-- Sonarr lookup returns unreliable monitoring defaults for new series — server resets them; the preset decides (researcher: sonarr issue #5761).
+- Sonarr lookup returns unreliable monitoring defaults for new series; the server resets them, and the preset decides (researcher: sonarr issue #5761).
 - Search trigger: rely **only** on `addOptions.searchForMovie` / `searchForMissingEpisodes`. Never also fire a `MoviesSearch`/`SeriesSearch` command for the same add (duplicate-search footgun).
-- Status after add (decision D4 — default: **show it**): polled badge with the full acquisition state machine (§5) from `GET /api/v3/queue` + item state. No websockets in v1.
+- Status after add (decision D4, default: **show it**): polled badge with the full acquisition state machine (§5) from `GET /api/v3/queue` + item state. No websockets in v1.
 
 ---
 
@@ -131,15 +131,15 @@ Member rules:
 ### 6.2 Operations console (curated, full write access, confirm-gated)
 The ~15 endpoints admins actually touch, hand-built:
 
-- **Library:** list/edit movies & series; change quality profile, root folder, tags, monitored state; **delete — with typed-confirmation dialog**.
-- **Queue:** view + delete queue items (remove from client? — confirm-gated).
+- **Library:** list/edit movies & series; change quality profile, root folder, tags, monitored state; **delete, with typed-confirmation dialog**.
+- **Queue:** view + delete queue items (remove from client? confirm-gated).
 - **History:** browsable, filterable.
-- **Commands:** curated buttons only — `MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`. No free-form command input.
+- **Commands:** curated buttons only (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`). No free-form command input.
 - **Exclusions / blocklist:** view + remove.
 - **Calendar:** upcoming releases (read-only).
 
 ### 6.3 Read-only passthrough (the escape hatch)
-- `GET /arrapi/:service/*` — proxies **GET only** to whitelisted read endpoints, API key injected server-side.
+- `GET /arrapi/:service/*`: proxies **GET only** to whitelisted read endpoints, API key injected server-side.
 - Purpose: inspect any payload the curated UI doesn't show; feed future feature decisions.
 - Write verbs never pass through. If a gap appears, the answer is a curated screen, not opening POST.
 
@@ -157,33 +157,33 @@ The ~15 endpoints admins actually touch, hand-built:
 
 ## 8. Milestones
 
-### M1 — Skeleton talks to the arrs
+### M1: Skeleton talks to the arrs
 SvelteKit scaffold, SQLite schema, settings page storing one Radarr + one Sonarr connection, capability probe, `ArrClient` adapters for lookup/add/qualityprofile/rootfolder/tag/system-status. *Done when:* a curl-able `/api/search` returns trimmed poster results from both services.
 
-### M2 — Member flow ✅
+### M2: Member flow ✅
 Auth (admin first-run + member PINs), search UI, add-with-default-preset, already-in-library badge, activity log. *Done when:* a non-technical user adds a movie and an episode-bearing series with zero instruction, and the item appears in Radarr/Sonarr monitored with a search triggered per preset.
 
-### M3 — Admin presets + status ✅
+### M3: Admin presets + status ✅
 Preset CRUD with live dropdowns; polled add-status badge; per-series-type Sonarr defaults. *Done when:* changing a preset changes add behavior, verified end-to-end.
 
-### M4 — Admin operations console ✅
+### M4: Admin operations console ✅
 Library edit/delete (confirm-gated), queue, history, commands buttons, exclusions, calendar. *Done when:* the admin never needs the Radarr/Sonarr UI for day-to-day acquisition decisions.
 
-### M5 — Read-only passthrough + polish ✅
+### M5: Read-only passthrough + polish ✅
 `/arrapi` GET proxy with allow-list, error surfaces friendly to non-admins, one-line launch, README. *Done when:* v1 is taggable.
 
-### M6 — Acquisition states, mobile, hardening ✅ (v1.2)
+### M6: Acquisition states, mobile, hardening ✅ (v1.2)
 Server-normalized status API and real states on poster cards (badges, progress bar, time-left strip, adaptive polling); admin-only restart with self-restart + port takeover; LAN sharing toggle; setup→settings onboarding handoff; mobile pass (safe areas, 44px targets, iOS zoom fix); technical audit + hardening (login backoff, error states on every fetch path, watch-detail strip fix). *Done when:* an anonymous member can watch an add go from queued to available on a phone, unsupervised.
 
 ---
 
-## 9. Open owner decisions (defaults applied — override anything)
+## 9. Open owner decisions (defaults applied; override anything)
 
 | # | Decision | Default in this plan |
 |---|---|---|
 | D1 | Stack | Node + SvelteKit + SQLite (§2) |
-| D2 | User model | **changed v1.1:** no member accounts — anonymous one-tap adds; single admin login guards admin surfaces (§3) |
-| D3 | Approval workflow | none — direct add |
+| D2 | User model | **changed v1.1:** no member accounts, just anonymous one-tap adds; single admin login guards admin surfaces (§3) |
+| D3 | Approval workflow | none; direct add |
 | D4 | Post-add status | yes, simple polled badge (§5) |
 | D5 | v1 scope | Radarr + Sonarr both; 4K instances via `services` table but UI-hidden until needed (§4) |
 | D6 | Admin depth | curated console + GET-only passthrough; no write passthrough (§6) |
@@ -191,7 +191,7 @@ Server-normalized status API and real states on poster cards (badges, progress b
 
 ## 10. Risks carried forward
 
-- **API drift** across Radarr 4→5 / Sonarr 3→4 — mitigated by per-service adapters + startup probe.
-- **Sonarr add complexity** (seasons, series types) — per-series-type presets, server resets lookup monitoring defaults.
-- **Swagger under-specifies required fields** — required-field sets pinned in code (tmdbId/tvdbId, qualityProfileId, rootFolderPath).
-- **"Full control" scope creep** — capped by design: curated console + read-only passthrough is the ceiling; new needs become curated screens.
+- **API drift** across Radarr 4→5 / Sonarr 3→4, mitigated by per-service adapters plus the startup probe.
+- **Sonarr add complexity** (seasons, series types); handled with per-series-type presets and server-side resets of lookup monitoring defaults.
+- **Swagger under-specifies required fields;** the required-field sets are pinned in code (tmdbId/tvdbId, qualityProfileId, rootFolderPath).
+- **"Full control" scope creep:** capped by design; curated console + read-only passthrough is the ceiling, and new needs become curated screens.
