@@ -1,7 +1,15 @@
 <script lang="ts">
 	import type { PosterCard } from '$lib/arr/types';
 
-	type WatchState = 'waiting' | 'queued' | 'paused' | 'downloading' | 'partial' | 'attention' | 'available';
+	type WatchState =
+		| 'waiting'
+		| 'queued'
+		| 'paused'
+		| 'downloading'
+		| 'importing'
+		| 'partial'
+		| 'attention'
+		| 'available';
 
 	type Result = PosterCard & {
 		kind: 'movie' | 'series';
@@ -75,7 +83,8 @@
 			});
 			const data = await res.json();
 			if (res.ok) {
-				card.inLibrary = true;
+				// Don't set inLibrary here — the item is only *monitored* until it's
+				// actually on disk. The watch badge tracks acquisition instead.
 				if (typeof data.id === 'number') {
 					card.watchId = data.id;
 					card.watchStatus = 'queued';
@@ -148,6 +157,7 @@
 		queued: 'Queued',
 		paused: 'Paused',
 		downloading: 'Downloading…',
+		importing: 'Importing…',
 		partial: 'Episodes',
 		attention: 'Needs attention'
 	};
@@ -177,6 +187,8 @@
 			case 'downloading':
 				return p != null ? { mode: 'determinate', progress: p, tone: 'primary' } : { mode: 'indeterminate', progress: null, tone: 'primary' };
 			case 'queued':
+				return { mode: 'indeterminate', progress: null, tone: 'primary' };
+			case 'importing':
 				return { mode: 'indeterminate', progress: null, tone: 'primary' };
 			case 'paused':
 				return p != null ? { mode: 'determinate', progress: p, tone: 'warning' } : { mode: 'indeterminate', progress: null, tone: 'warning' };
@@ -273,7 +285,11 @@
 							<span
 								class="dot"
 								class:warn={card.watchStatus === 'attention' || card.watchStatus === 'paused'}
-								class:active={card.watchStatus === 'downloading' || card.watchStatus === 'queued'}
+								class:active={
+									card.watchStatus === 'downloading' ||
+									card.watchStatus === 'queued' ||
+									card.watchStatus === 'importing'
+								}
 							></span>
 						{/if}
 						{watchText(card)}
@@ -285,6 +301,8 @@
 				<p class="year">{card.year ?? ''}</p>
 				{#if card.inLibrary}
 					<button class="secondary" disabled>Already added</button>
+				{:else if card.watchStatus && card.watchStatus !== 'available'}
+					<button class="secondary" disabled title="Already in your library — waiting for download">Added</button>
 				{:else}
 					<button onclick={() => add(card)} disabled={busyId === card.sourceId}>
 						{busyId === card.sourceId ? 'Adding…' : 'Add'}

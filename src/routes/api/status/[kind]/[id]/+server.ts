@@ -11,8 +11,11 @@ import { ArrError } from '$lib/arr/types';
  * by POST /api/add. States: waiting → queued → downloading → available,
  * plus paused (queue paused), partial (series: some episodes on disk,
  * nothing queued), attention (download client warning/error).
- * Payload: { state, progress?, timeLeftSeconds?, episodes? }. All
- * Radarr/Sonarr differences are normalized server-side (council decision).
+ * Payload: { state, progress?, timeLeftSeconds?, episodes? }. States:
+ * waiting → queued → downloading → importing → available, plus paused,
+ * partial (series: some episodes on disk, nothing queued), attention
+ * (download client warning/error — where stuck imports surface).
+ * All Radarr/Sonarr differences are normalized server-side (council decision).
  * (Decision D4: polling only, no websockets.)
  */
 export const GET: RequestHandler = async ({ params }) => {
@@ -94,8 +97,21 @@ function aggregateQueue(rows: Record<string, unknown>[]) {
 		return t === 'warning' || t === 'error';
 	});
 	const downloading = rows.some((q) => q.status === 'downloading');
+	// Download finished, *arr is post-processing/importing the file — this can
+	// also be where a stuck import lingers, so surface it as its own state.
+	const importing = rows.some((q) =>
+		['completed', 'importing', 'importpending'].includes(String(q.status ?? '').toLowerCase())
+	);
 	const paused = rows.some((q) => q.status === 'paused');
 
-	const state = warned ? 'attention' : downloading ? 'downloading' : paused ? 'paused' : 'queued';
+	const state = warned
+		? 'attention'
+		: downloading
+			? 'downloading'
+			: importing
+				? 'importing'
+				: paused
+					? 'paused'
+					: 'queued';
 	return { state, progress, timeLeftSeconds };
 }
