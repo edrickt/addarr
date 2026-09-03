@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { handler } from '../build/handler.js';
 
 const forcedLan = process.argv.includes('--lan') || process.env.ADDARR_LAN === '1';
-const port = Number(process.env.PORT) || 3000;
+const port = Number(process.env.PORT) || 4545;
 
 // Same resolution as src/lib/server/db.ts.
 const dbPath = process.env.ADDARR_DB ?? join(process.cwd(), 'data', 'addarr.db');

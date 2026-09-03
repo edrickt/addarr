@@ -78,7 +78,7 @@ On Windows, allow Node.js through the Windows Defender firewall prompt if it app
 
 ### 3. Open the app
 
-Browse to `http://localhost:3000`. Other devices on your LAN use `http://<your-machine-ip>:3000` (find the IP with `ipconfig` on Windows, `ipconfig getifaddr en0` on macOS, or `ip addr` on Linux).
+Browse to `http://localhost:4545`. Other devices on your LAN use `http://<your-machine-ip>:4545` (find the IP with `ipconfig` on Windows, `ipconfig getifaddr en0` on macOS, or `ip addr` on Linux).
 
 ### Useful options
 
@@ -92,7 +92,7 @@ npm run dev                        # development mode with hot reload
 
 By default Addarr binds to `localhost` only — nothing else on the network can reach it. To share it, sign in as admin and go to **Settings → Network → Share on LAN**. When enabled, Addarr:
 
-- becomes reachable from other devices at `http://<your-machine-ip>:3000` (the address is printed in the startup log), and
+- becomes reachable from other devices at `http://<your-machine-ip>:4545` (the address is printed in the startup log), and
 - broadcasts itself over mDNS/Bonjour as **"Addarr"**, so it shows up in network discovery (e.g. Safari's Bonjour list or an Avahi browser).
 
 Enabling the setting takes effect for discovery immediately; if the server was started in localhost-only mode, one restart is needed to open the network bind — the app tells you when that's the case.
@@ -103,7 +103,7 @@ Data (users, sessions, connections, presets, activity log) lives in one SQLite f
 
 ## First run
 
-1. Open `http://<host>:3000` → you're redirected to **Setup**: create the admin account (username + 4–6 digit PIN).
+1. Open `http://<host>:4545` → you're redirected to **Setup**: create the admin account (username + 4–6 digit PIN).
 2. **Settings** → connect Radarr and Sonarr (URL + API key). A capability probe verifies the version before saving, and a usable default preset is created automatically from the instance's first quality profile / root folder.
 3. **Members** → add household members (username + PIN).
 4. Hand them the URL. That's it.
