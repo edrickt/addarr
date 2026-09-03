@@ -12,6 +12,7 @@ const ADMIN_PREFIXES = [
 	'/api/presets',
 	'/api/console',
 	'/api/activity',
+	'/api/settings',
 	'/arrapi'
 ];
 

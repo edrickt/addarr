@@ -82,13 +82,14 @@ npm run dev                        # development mode with hot reload
 
 ### Sharing on your LAN (broadcasting)
 
-By default Addarr binds to `localhost` only — nothing else on the network can reach it. To open it up to your LAN **and** broadcast it over mDNS/Bonjour (so it shows up as "Addarr" in network discovery, e.g. Safari's Bonjour list or an Avahi browser), enable LAN mode:
+By default Addarr binds to `localhost` only — nothing else on the network can reach it. To share it, sign in as admin and go to **Settings → Network → Share on LAN**. When enabled, Addarr:
 
-```sh
-npm start -- --lan                 # Windows PowerShell: $env:ADDARR_LAN=1; npm start
-```
+- becomes reachable from other devices at `http://<your-machine-ip>:3000` (the address is printed in the startup log), and
+- broadcasts itself over mDNS/Bonjour as **"Addarr"**, so it shows up in network discovery (e.g. Safari's Bonjour list or an Avahi browser).
 
-The startup log prints the LAN URL to hand out (e.g. `http://192.168.1.23:3000`). You can also set `HOST` explicitly (`HOST=192.168.1.23`) to bind a single interface. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs — discovery just won't work.
+Enabling the setting takes effect for discovery immediately; if the server was started in localhost-only mode, one restart is needed to open the network bind — the app tells you when that's the case.
+
+For headless setups you can also force it at startup: `npm start -- --lan` (or `ADDARR_LAN=1`), which overrides the in-app setting until restart. `HOST=<addr>` binds a specific interface. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs — discovery just won't work.
 
 Data (users, sessions, connections, presets, activity log) lives in one SQLite file, `data/addarr.db` by default. Back that file up and you've backed up the whole app.
 

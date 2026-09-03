@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS presets (
 	UNIQUE (service_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+	key TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS activity_log (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -73,6 +78,20 @@ try {
 	db.exec(`ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`);
 } catch {
 	/* column already present */
+}
+
+export function getSetting(key: string): string | undefined {
+	const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+		| { value: string }
+		| undefined;
+	return row?.value;
+}
+
+export function setSetting(key: string, value: string): void {
+	db.prepare(
+		`INSERT INTO settings (key, value) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+	).run(key, value);
 }
 
 export type ServiceRow = {

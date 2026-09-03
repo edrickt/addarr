@@ -29,6 +29,7 @@
 	}
 	$effect(() => {
 		loadSaved();
+		loadLan();
 	});
 
 	async function save(kind: ServiceKind) {
@@ -53,6 +54,37 @@
 		}
 	}
 	const kinds: ServiceKind[] = ['radarr', 'sonarr'];
+
+	let lan = $state<{ enabled: boolean; broadcasting: boolean; boundLan: boolean; forced: boolean; managedExternally: boolean } | null>(null);
+	let lanBusy = $state(false);
+	let lanStatus: Status = $state(null);
+
+	async function loadLan() {
+		const res = await fetch('/api/settings/lan');
+		if (res.ok) lan = await res.json();
+	}
+
+	async function toggleLan() {
+		if (!lan) return;
+		lanBusy = true;
+		lanStatus = null;
+		try {
+			const res = await fetch('/api/settings/lan', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled: !lan.enabled })
+			});
+			const data = await res.json();
+			lanStatus = res.ok
+				? { kind: 'ok', text: data.message ?? (data.broadcasting ? 'Broadcasting on the LAN.' : 'LAN sharing off.') }
+				: { kind: 'error', text: data.error ?? 'Failed' };
+			if (res.ok) await loadLan();
+		} catch {
+			lanStatus = { kind: 'error', text: 'Request failed' };
+		} finally {
+			lanBusy = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -99,3 +131,34 @@
 		</ul>
 	</div>
 {/if}
+
+<div class="card">
+	<h2>Network</h2>
+	{#if lan}
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={lan.enabled || lan.forced}
+				disabled={lanBusy || lan.forced}
+				onchange={toggleLan}
+			/>
+			Share on LAN (discoverable via mDNS/Bonjour as “Addarr”)
+		</label>
+		<p class="hint">
+			{#if lan.forced}
+				Forced on via the --lan flag or ADDARR_LAN=1 for this session.
+			{:else if lan.broadcasting}
+				On — other devices can reach Addarr and see it in network discovery.
+			{:else if lan.enabled && !lan.boundLan}
+				Saved on — restart Addarr to make it reachable on the LAN.
+			{:else if lan.enabled}
+				Preference on, but not broadcasting on this session.
+			{:else}
+				Off — Addarr is reachable from this machine only.
+			{/if}
+		</p>
+		{#if lanStatus}<p class="msg {lanStatus.kind}">{lanStatus.text}</p>{/if}
+	{:else}
+		<p class="hint">Loading…</p>
+	{/if}
+</div>
