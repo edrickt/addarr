@@ -18,53 +18,61 @@ Node.js + TypeScript, SvelteKit (SSR), SQLite (`node:sqlite`, zero native deps).
 
 ## Setup (Windows / macOS / Linux)
 
-All you need is **Node.js 22.5 or newer** (an LTS release is fine) and **Git**. Everything else is automatic — `npm start` installs dependencies, builds, and serves.
+### Requirements
 
-### 1. Install Node.js and Git
+- **Node.js 22.5 or newer** (an LTS release is fine) — the only hard requirement. Check with `node -v`.
+- **Git** — *optional*, only if you want to clone or update via git. Downloading a ZIP works just as well.
+
+No database server, no build tools, no containers — everything else is handled by `npm start`, which installs dependencies, builds, and serves in one go.
+
+### 1. Install Node.js
 
 **Windows** (PowerShell):
 
 ```powershell
-winget install OpenJS.NodeJS.LTS Git.Git
+winget install OpenJS.NodeJS.LTS
 ```
 
-Or download the installers from [nodejs.org](https://nodejs.org) and [git-scm.com](https://git-scm.com). Close and reopen your terminal afterwards so the PATH updates.
+Or download the installer from [nodejs.org](https://nodejs.org). Close and reopen your terminal afterwards so the PATH updates.
 
 **macOS** (Terminal, with [Homebrew](https://brew.sh)):
 
 ```sh
-brew install node git
+brew install node
 ```
 
-Or grab the `.pkg` installers from nodejs.org and git-scm.com.
+Or grab the `.pkg` installer from nodejs.org.
 
 **Linux** (Debian/Ubuntu):
 
 ```sh
 curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs git
+sudo apt-get install -y nodejs
 ```
 
-(Fedora: `sudo dnf install nodejs git` — or use [nvm](https://github.com/nvm-sh/nvm) on any distro to get the latest Node.)
+(Fedora: `sudo dnf install nodejs` — or use [nvm](https://github.com/nvm-sh/nvm) on any distro to get the latest Node.)
 
-Verify before continuing:
+### 2. Get the code
+
+Any way you like, e.g.:
+
+- **Download a ZIP**: on the GitHub repo page, **Code → Download ZIP**, then extract it and `cd` into the extracted folder in your terminal.
+- **Clone** (requires Git):
+
+  ```sh
+  git clone https://github.com/edrickt/addarr.git
+  cd addarr
+  ```
+
+### 3. Start it
+
+In the folder containing `package.json`:
 
 ```sh
-node -v   # must be 22.5 or higher
-git --version
-```
-
-### 2. Get the code and start it
-
-Same on every OS:
-
-```sh
-git clone https://github.com/edrickt/addarr.git
-cd addarr
 npm start
 ```
 
-`npm start` installs, builds, and launches the server in one go. First run takes a minute; subsequent runs are faster.
+First run takes a minute; subsequent runs are faster. Updating later is the same: grab the latest code (re-download the ZIP or `git pull`) and run `npm start` again.
 
 On Windows, allow Node.js through the Windows Defender firewall prompt if it appears (check both **Private** and **Public** networks if you'll serve over LAN).
 
