@@ -477,6 +477,15 @@ import type { ArrItemState } from '$lib/arr/status';
 	}
 	.poster-card {
 		width: 150px;
+		/* Column layout so the Add button/chip pins to the card bottom —
+	   one- and two-line titles keep their actions on the same baseline. */
+		display: flex;
+		flex-direction: column;
+	}
+	.poster-meta {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
 	}
 	.poster-card:hover .poster-wrap {
 		border-color: var(--border-strong);
@@ -587,6 +596,9 @@ import type { ArrItemState } from '$lib/arr/status';
 		font-size: 0.85rem;
 		font-weight: 450;
 		line-height: 1.25;
+		/* Reserve the full two-line height so short titles don't shift the
+	   year and action relative to longer ones. */
+		min-height: 2.125rem;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
@@ -603,7 +615,7 @@ import type { ArrItemState } from '$lib/arr/status';
 	   card doesn't jump when an item's state changes. Fixed height + flex
 	   centering keeps UA line-height/border quirks from shifting either. */
 	.poster-card button {
-		margin-top: 0;
+		margin-top: auto;
 		width: 100%;
 		height: 2.75rem;
 		padding: 0;
@@ -613,6 +625,7 @@ import type { ArrItemState } from '$lib/arr/status';
 		font-size: 0.95rem;
 	}
 	.added-chip {
+		margin-top: auto;
 		display: flex;
 		align-items: center;
 		justify-content: center;

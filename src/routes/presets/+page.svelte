@@ -223,7 +223,7 @@
 		color: var(--muted-foreground);
 	}
 	.tag {
-		font-size: 0.72rem;
+		font-size: 0.75rem;
 		font-weight: 450;
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius);

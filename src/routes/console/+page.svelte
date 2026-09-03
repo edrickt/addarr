@@ -708,6 +708,7 @@
 		gap: 0.5rem;
 		margin-top: 0.6rem;
 		color: var(--foreground);
+		font-size: 0.95rem;
 	}
 	.check input {
 		width: auto;
