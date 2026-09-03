@@ -13,6 +13,7 @@ const ADMIN_PREFIXES = [
 	'/api/console',
 	'/api/activity',
 	'/api/settings',
+	'/api/restart',
 	'/arrapi'
 ];
 

@@ -9,6 +9,35 @@
 		location.assign('/login');
 	}
 
+	let restarting = $state(false);
+
+	async function restartApp() {
+		if (restarting) return;
+		if (!confirm('Restart Addarr? It will be unavailable for a few seconds.')) return;
+		restarting = true;
+		try {
+			await fetch('/api/restart', { method: 'POST' });
+		} catch {
+			/* the server may drop the connection mid-restart — expected */
+		}
+		// Poll until the new process is answering, then reload.
+		const deadline = Date.now() + 30_000;
+		while (Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 1000));
+			try {
+				const res = await fetch('/', { cache: 'no-store' });
+				if (res.ok) {
+					location.reload();
+					return;
+				}
+			} catch {
+				/* still down, keep polling */
+			}
+		}
+		alert('Addarr did not come back within 30 s — check the server console.');
+		restarting = false;
+	}
+
 	const nav = $derived([
 		{ href: '/', label: 'Search', icon: 'search' },
 		...(data.user?.role === 'admin'
@@ -74,6 +103,11 @@
 		</nav>
 		{#if data.user}
 			<div class="topbar-actions">
+				{#if data.user.role === 'admin'}
+					<button class="linklike" onclick={restartApp} disabled={restarting} title="Restart the Addarr server">
+						{restarting ? 'Restarting…' : 'Restart'}
+					</button>
+				{/if}
 				<span class="user-badge">{data.user.username}</span>
 				<button class="linklike" onclick={logout}>Log out</button>
 			</div>
