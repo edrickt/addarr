@@ -31,6 +31,11 @@
 
 	async function load() {
 		msg = null;
+		// Switching service invalidates any open editor or delete dialog —
+		// their ids belong to the other service's preset table.
+		editing = null;
+		showNew = false;
+		deleting = null;
 		try {
 			const res = await fetch(`/api/presets?service=${service}`);
 			const data = await res.json();
@@ -71,6 +76,8 @@
 			} else {
 				msg = { kind: 'error', text: data.error ?? 'Failed' };
 			}
+		} catch {
+			msg = { kind: 'error', text: 'Request failed — check the server and try again.' };
 		} finally {
 			busy = false;
 		}

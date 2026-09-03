@@ -183,10 +183,17 @@
 		episodesFor = item;
 		episodes = [];
 		epPage = 1;
-		const res = await fetch(`/api/console/episodes?service=sonarr&seriesId=${item.id}`);
-		const out = await res.json();
-		if (res.ok) episodes = out.items ?? [];
-		else msg = { kind: 'error', text: out.error ?? 'Failed to load episodes' };
+		try {
+			const res = await fetch(`/api/console/episodes?service=sonarr&seriesId=${item.id}`);
+			const out = await res.json().catch(() => ({}));
+			if (res.ok) episodes = out.items ?? [];
+			else throw new Error(out.error ?? 'Failed to load episodes');
+		} catch (e) {
+			// Close the dialog so the message is visible behind nothing —
+			// the overlay would hide a page-level message.
+			episodesFor = null;
+			msg = { kind: 'error', text: e instanceof Error && e.message ? e.message : 'Request failed' };
+		}
 	}
 
 	function searchEpisode(episodeId: number) {

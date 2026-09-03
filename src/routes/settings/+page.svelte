@@ -19,14 +19,18 @@
 		$state([]);
 
 	async function loadSaved() {
-		const res = await fetch('/api/services');
-		const data = await res.json();
-		saved = data.services ?? [];
-		for (const s of saved) {
-			const kind = s.type as ServiceKind;
-			const form = kind === 'radarr' ? radarr : sonarr;
-			form.name = s.name;
-			form.baseUrl = s.base_url;
+		try {
+			const res = await fetch('/api/services');
+			const data = await res.json();
+			saved = data.services ?? [];
+			for (const s of saved) {
+				const kind = s.type as ServiceKind;
+				const form = kind === 'radarr' ? radarr : sonarr;
+				form.name = s.name;
+				form.baseUrl = s.base_url;
+			}
+		} catch {
+			/* keep whatever the forms already show — saving still works */
 		}
 	}
 	$effect(() => {
@@ -124,8 +128,13 @@
 	let lanStatus: Status = $state(null);
 
 	async function loadLan() {
-		const res = await fetch('/api/settings/lan');
-		if (res.ok) lan = await res.json();
+		try {
+			const res = await fetch('/api/settings/lan');
+			if (res.ok) lan = await res.json();
+			else lanStatus = { kind: 'error', text: 'Could not load network settings.' };
+		} catch {
+			lanStatus = { kind: 'error', text: 'Could not load network settings — reload to retry.' };
+		}
 	}
 
 	async function toggleLan() {
@@ -228,6 +237,8 @@
 			{/if}
 		</p>
 		{#if lanStatus}<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>{/if}
+	{:else if lanStatus}
+		<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>
 	{:else}
 		<p class="hint">Loading…</p>
 	{/if}

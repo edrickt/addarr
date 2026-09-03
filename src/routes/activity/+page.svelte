@@ -16,6 +16,7 @@
 	let entries = $state<Entry[]>([]);
 	let hasMore = $state(false);
 	let loading = $state(false);
+	let loadError = $state(false);
 	const PAGE_SIZE = 50;
 
 	// Page number lives in the URL — refresh and deep links keep your place.
@@ -27,11 +28,14 @@
 
 	async function load() {
 		loading = true;
+		loadError = false;
 		try {
 			const res = await fetch(`/api/activity?page=${pageNum}`);
 			const data = await res.json();
 			entries = data.entries ?? [];
 			hasMore = entries.length === (data.pageSize ?? PAGE_SIZE);
+		} catch {
+			loadError = true;
 		} finally {
 			loading = false;
 		}
@@ -65,6 +69,11 @@
 
 {#if loading}
 	<p class="hint">Loading…</p>
+{:else if loadError}
+	<p class="msg error" role="alert">
+		Couldn't load the activity log.
+		<button class="secondary retry-btn" onclick={load}>Retry</button>
+	</p>
 {:else}
 	<div class="card">
 		<ul class="rows">
@@ -128,5 +137,12 @@
 		.when {
 			margin-left: auto;
 		}
+	}
+	.retry-btn {
+		margin-top: 0;
+		margin-left: 0.6rem;
+		padding: 0.2rem 0.7rem;
+		font-size: 0.8rem;
+		vertical-align: middle;
 	}
 </style>
