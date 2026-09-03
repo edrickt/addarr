@@ -1,0 +1,36 @@
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { getClient } from '$lib/server/arr-factory';
+import { RadarrClient } from '$lib/arr/radarr';
+import { SonarrClient } from '$lib/arr/sonarr';
+import { ArrError } from '$lib/arr/types';
+
+/** GET /api/search?service=movie|series&q=term — trimmed poster-card results. */
+export const GET: RequestHandler = async ({ url }) => {
+	const kind = url.searchParams.get('service');
+	const q = url.searchParams.get('q')?.trim();
+
+	if (kind !== 'movie' && kind !== 'series') {
+		return json({ error: 'service must be "movie" or "series"' }, { status: 400 });
+	}
+	if (!q) {
+		return json({ error: 'q (search term) is required' }, { status: 400 });
+	}
+
+	try {
+		if (kind === 'movie') {
+			const client = getClient('radarr');
+			if (!(client instanceof RadarrClient)) throw new Error('unreachable');
+			return json({ service: 'radarr', results: await client.toPosterCards(await client.lookup(q)) });
+		}
+		const client = getClient('sonarr');
+		if (!(client instanceof SonarrClient)) throw new Error('unreachable');
+		return json({ service: 'sonarr', results: await client.toPosterCards(await client.lookup(q)) });
+	} catch (err) {
+		if (err instanceof ArrError) {
+			return json({ error: err.message }, { status: err.status === 502 ? 502 : 502 });
+		}
+		const message = err instanceof Error ? err.message : 'Search failed';
+		return json({ error: message }, { status: 400 });
+	}
+};

@@ -1,0 +1,381 @@
+/* Addarr — "Precision" theme, light colorway.
+   Near-white canvas, ink text, hairline structure, one Linear-indigo accent.
+   Semantic tokens: re-skin the whole app from this file. */
+
+:root {
+	/* semantic tokens */
+	--background: #fafafa;
+	--foreground: #171717;
+	--muted-foreground: #71717a;
+	--card: #ffffff;
+	--elevated: #f4f4f5;
+	--border: #e4e4e7;
+	--border-strong: #d4d4d8;
+	--primary: #5e6ad2;
+	--primary-hover: #4f5bc9;
+	--primary-foreground: #ffffff;
+	--destructive: #cf222e;
+	--success: #1a7f37;
+	--warning: #9a6700;
+
+	/* shape */
+	--radius: 0px;
+	--radius-card: 0px;
+
+	/* type */
+	--font-ui: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+	--font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+:root {
+	font-family: var(--font-ui);
+	color-scheme: light;
+	font-feature-settings: 'cv11', 'ss01';
+}
+
+body {
+	margin: 0;
+	background: var(--background);
+	color: var(--foreground);
+	font-size: 14px;
+	line-height: 1.5;
+	font-variant-numeric: tabular-nums;
+	-webkit-font-smoothing: antialiased;
+}
+
+.mono {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- app shell: top bar + content ---- */
+
+.app {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+.topbar {
+	display: flex;
+	align-items: center;
+	gap: 1.25rem;
+	padding: 0.5rem 1.5rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--background);
+	position: sticky;
+	top: 0;
+	z-index: 10;
+}
+
+.brand {
+	font-size: 0.95rem;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	color: var(--foreground);
+	text-decoration: none;
+	padding: 0.35rem 0.5rem;
+}
+
+.topnav {
+	display: flex;
+	align-items: center;
+	gap: 1px;
+	flex-grow: 1;
+	flex-wrap: wrap;
+}
+
+.topnav a {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+	padding: 0.4rem 0.6rem;
+	border-radius: var(--radius);
+	color: var(--muted-foreground);
+	text-decoration: none;
+	font-size: 0.9rem;
+	font-weight: 500;
+}
+
+.topnav a:hover {
+	color: var(--foreground);
+	background: var(--elevated);
+}
+
+.topnav a.active {
+	color: var(--foreground);
+	background: var(--elevated);
+	font-weight: 450;
+}
+
+.topnav a svg {
+	width: 15px;
+	height: 15px;
+	flex-shrink: 0;
+}
+
+.topbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	margin-left: auto;
+}
+
+.user-badge {
+	color: var(--muted-foreground);
+	font-size: 0.85rem;
+	font-weight: 500;
+	padding-right: 0.25rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.topbar-actions .signin {
+	color: var(--muted-foreground);
+	font-size: 0.8rem;
+	text-decoration: none;
+	padding: 0.2rem 0.4rem;
+}
+
+.topbar-actions .signin:hover {
+	color: var(--foreground);
+}
+
+.content {
+	padding: 2rem 2.5rem;
+	max-width: 1100px;
+	box-sizing: border-box;
+	width: 100%;
+	margin: 0 auto;
+}
+
+/* ---- type scale ---- */
+
+h1 {
+	font-size: 1.25rem;
+	font-weight: 500;
+	letter-spacing: -0.02em;
+	margin: 0 0 0.4rem;
+}
+
+h2 {
+	font-size: 0.9rem;
+	font-weight: 450;
+	margin: 0 0 0.75rem;
+}
+
+p {
+	margin: 0.4rem 0;
+}
+
+/* ---- surfaces ---- */
+
+.card {
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-card);
+	padding: 1.1rem 1.25rem;
+	margin-bottom: 1rem;
+}
+
+/* ---- forms ---- */
+
+label {
+	display: block;
+	margin: 0.75rem 0 0.3rem;
+	color: var(--muted-foreground);
+	font-size: 0.8rem;
+	font-weight: 500;
+}
+
+input,
+select {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.45rem 0.6rem;
+	border-radius: var(--radius);
+	border: 1px solid var(--border-strong);
+	background: var(--card);
+	color: var(--foreground);
+	font-size: 0.9rem;
+	font-family: inherit;
+}
+
+input::placeholder {
+	color: var(--muted-foreground);
+	opacity: 0.7;
+}
+
+button {
+	padding: 0.45rem 0.9rem;
+	border-radius: var(--radius);
+	border: 1px solid transparent;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	font-size: 0.875rem;
+	font-weight: 450;
+	font-family: inherit;
+	cursor: pointer;
+	margin-top: 0.75rem;
+}
+
+button:hover:not(:disabled) {
+	background: var(--primary-hover);
+}
+
+button.secondary {
+	background: var(--card);
+	color: var(--foreground);
+	border-color: var(--border-strong);
+}
+
+button.secondary:hover:not(:disabled) {
+	background: var(--elevated);
+}
+
+button.danger {
+	color: var(--destructive);
+	border-color: color-mix(in srgb, var(--destructive) 35%, transparent);
+}
+
+button.danger:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+}
+
+button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+button.linklike {
+	background: none;
+	border-color: transparent;
+	color: var(--muted-foreground);
+	font-weight: 500;
+	padding: 0.2rem 0.4rem;
+	margin-top: 0;
+}
+
+button.linklike:hover {
+	color: var(--foreground);
+	background: var(--elevated);
+}
+
+/* ---- feedback ---- */
+
+.msg {
+	margin-top: 0.75rem;
+	font-size: 0.875rem;
+}
+
+.msg.error {
+	color: var(--destructive);
+}
+
+.msg.ok {
+	color: var(--success);
+}
+
+.hint {
+	color: var(--muted-foreground);
+}
+
+/* ---- status dot: pair with a word ---- */
+
+.dot {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	border-radius: 999px;
+	background: var(--muted-foreground);
+	margin-right: 0.4rem;
+	vertical-align: 1px;
+}
+
+.dot.ok {
+	background: var(--success);
+}
+
+.dot.warn {
+	background: var(--warning);
+}
+
+.dot.active {
+	background: var(--primary);
+}
+
+/* ---- KPI tiles (console) ---- */
+
+.kpi-strip {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 0.75rem;
+	margin-bottom: 1rem;
+}
+
+.kpi {
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-card);
+	padding: 0.7rem 0.9rem;
+}
+
+.kpi .kpi-value {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	font-size: 1.35rem;
+	font-weight: 450;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
+}
+
+.kpi .kpi-label {
+	color: var(--muted-foreground);
+	font-size: 0.75rem;
+	font-weight: 500;
+	margin-top: 0.1rem;
+}
+
+/* ---- interaction polish ---- */
+
+button,
+input,
+select,
+a,
+.rows li {
+	transition:
+		background-color 150ms ease,
+		border-color 150ms ease,
+		color 150ms ease;
+}
+
+:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+	outline-offset: 1px;
+	border-radius: var(--radius);
+}
+
+::selection {
+	background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* ---- responsive: top bar condenses ---- */
+
+@media (max-width: 760px) {
+	.topbar {
+		padding: 0.5rem 1rem;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+	.topnav {
+		order: 3;
+		flex-basis: 100%;
+	}
+	.user-badge {
+		display: none;
+	}
+	.content {
+		padding: 1.25rem;
+	}
+}
