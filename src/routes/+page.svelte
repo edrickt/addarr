@@ -1,7 +1,16 @@
 <script lang="ts">
 	import type { PosterCard } from '$lib/arr/types';
 
-	type Result = PosterCard & { kind: 'movie' | 'series'; watchId?: number; watchStatus?: string; watchProgress?: number };
+	type WatchState = 'waiting' | 'queued' | 'paused' | 'downloading' | 'partial' | 'attention' | 'available';
+
+	type Result = PosterCard & {
+		kind: 'movie' | 'series';
+		watchId?: number;
+		watchStatus?: WatchState;
+		watchProgress?: number | null;
+		watchTimeLeft?: number | null;
+		watchEpisodes?: { have: number; total: number } | null;
+	};
 
 	type Mode = 'all' | 'movie' | 'series';
 
@@ -92,27 +101,93 @@
 	let toastIsError = $state(false);
 
 	// Poll the add-status badge for recently added items (decision D4).
+	// One grid-wide self-scheduling timer: 5s while any watched card is
+	// downloading, 20s otherwise (council decision — warning states keep
+	// polling so cards self-heal when an admin clears them).
 	$effect(() => {
-		const timer = setInterval(async () => {
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout>;
+		const tick = async () => {
+			if (cancelled) return;
 			const watching = results.filter(
 				(r) => r.watchId && r.watchStatus && r.watchStatus !== 'available'
 			);
-			if (watching.length === 0) return;
-			for (const card of watching) {
-				try {
-					const res = await fetch(`/api/status/${card.kind}/${card.watchId}`);
-					if (!res.ok) continue;
-					const data = await res.json();
-					card.watchStatus = data.state;
-					card.watchProgress = data.progress;
-					if (data.state === 'available') showToast(`“${card.title}” is available`);
-				} catch {
-					/* transient — keep last state */
+			if (watching.length > 0) {
+				for (const card of watching) {
+					try {
+						const res = await fetch(`/api/status/${card.kind}/${card.watchId}`);
+						if (!res.ok) continue;
+						const data = await res.json();
+						card.watchStatus = data.state;
+						card.watchProgress = data.progress ?? null;
+						card.watchTimeLeft = data.timeLeftSeconds ?? null;
+						card.watchEpisodes = data.episodes ?? null;
+						if (data.state === 'available') {
+							card.inLibrary = true;
+							showToast(`“${card.title}” is available`);
+						}
+					} catch {
+						/* transient — keep last state */
+					}
 				}
 			}
-		}, 5000);
-		return () => clearInterval(timer);
+			if (cancelled) return;
+			const anyDownloading = results.some((r) => r.watchStatus === 'downloading');
+			timer = setTimeout(tick, anyDownloading ? 5000 : 20000);
+		};
+		timer = setTimeout(tick, 5000);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
 	});
+
+	// Member-facing vocabulary — the only place labels are worded.
+	const WATCH_LABEL: Record<Exclude<WatchState, 'available'>, string> = {
+		waiting: 'Looking for it…',
+		queued: 'Queued',
+		paused: 'Paused',
+		downloading: 'Downloading…',
+		partial: 'Episodes',
+		attention: 'Needs attention'
+	};
+
+	function watchText(card: Result): string {
+		const s = card.watchStatus!;
+		if (s === 'available') return 'In library';
+		if (s === 'downloading' && card.watchTimeLeft != null) return `${fmtLeft(card.watchTimeLeft)} left`;
+		if (s === 'partial' && card.watchEpisodes) {
+			return `${card.watchEpisodes.have} of ${card.watchEpisodes.total} episodes`;
+		}
+		return WATCH_LABEL[s];
+	}
+
+	function fmtLeft(seconds: number): string {
+		if (seconds < 60) return 'under a minute';
+		if (seconds < 90 * 60) return `${Math.round(seconds / 60)}m`;
+		return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+	}
+
+	type Bar = { mode: 'determinate' | 'indeterminate'; progress: number | null; tone: 'primary' | 'muted' | 'warning' } | null;
+
+	function watchBar(card: Result): Bar {
+		const s = card.watchStatus!;
+		const p = card.watchProgress ?? null;
+		switch (s) {
+			case 'downloading':
+				return p != null ? { mode: 'determinate', progress: p, tone: 'primary' } : { mode: 'indeterminate', progress: null, tone: 'primary' };
+			case 'queued':
+				return { mode: 'indeterminate', progress: null, tone: 'primary' };
+			case 'paused':
+				return p != null ? { mode: 'determinate', progress: p, tone: 'warning' } : { mode: 'indeterminate', progress: null, tone: 'warning' };
+			case 'attention':
+				return p != null ? { mode: 'determinate', progress: p, tone: 'warning' } : { mode: 'indeterminate', progress: null, tone: 'warning' };
+			case 'partial':
+				return p != null ? { mode: 'determinate', progress: p, tone: 'muted' } : null;
+			default:
+				return null; // waiting, available — no bar
+		}
+	}
 
 	const modes: { key: Mode; label: string }[] = [
 		{ key: 'all', label: 'All' },
@@ -178,14 +253,30 @@
 				{#if card.inLibrary}
 					<span class="badge">In library</span>
 				{/if}
+				{#if card.watchStatus && card.watchStatus !== 'available'}
+					{@const bar = watchBar(card)}
+					{#if bar}
+						<div class="progress" aria-hidden="true">
+							<div
+								class="progress-fill"
+								class:indeterminate={bar.mode === 'indeterminate'}
+								class:tone-muted={bar.tone === 'muted'}
+								class:tone-warning={bar.tone === 'warning'}
+								style={bar.mode === 'determinate' ? `width: ${Math.min(100, Math.max(0, bar.progress ?? 0))}%` : ''}
+							></div>
+						</div>
+					{/if}
+				{/if}
 				{#if card.watchStatus}
 					<span class="watch" class:done={card.watchStatus === 'available'}>
-						<span
-							class="dot"
-							class:ok={card.watchStatus === 'available'}
-							class:active={card.watchStatus === 'downloading' || card.watchStatus === 'queued'}
-						></span>
-						{card.watchStatus === 'downloading' ? `downloading ${card.watchProgress ?? 0}%` : card.watchStatus}
+						{#if card.watchStatus !== 'available'}
+							<span
+								class="dot"
+								class:warn={card.watchStatus === 'attention' || card.watchStatus === 'paused'}
+								class:active={card.watchStatus === 'downloading' || card.watchStatus === 'queued'}
+							></span>
+						{/if}
+						{watchText(card)}
 					</span>
 				{/if}
 			</div>
@@ -300,6 +391,44 @@
 	}
 	.watch.done {
 		color: var(--success);
+	}
+	.progress {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 3px;
+		background: color-mix(in srgb, var(--border) 75%, transparent);
+	}
+	.progress-fill {
+		height: 100%;
+		background: var(--primary);
+		transition: width 1s ease;
+	}
+	.progress-fill.tone-muted {
+		background: var(--muted-foreground);
+	}
+	.progress-fill.tone-warning {
+		background: var(--warning);
+		transition: none;
+	}
+	.progress-fill.indeterminate {
+		width: 25%;
+		transition: none;
+		animation: progress-slide 1.4s ease-in-out infinite;
+	}
+	@keyframes progress-slide {
+		from {
+			transform: translateX(-100%);
+		}
+		to {
+			transform: translateX(400%);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.progress-fill.indeterminate {
+			animation: none;
+		}
 	}
 	.poster-meta .title {
 		margin: 0.45rem 0 0;
