@@ -599,18 +599,26 @@ import type { ArrItemState } from '$lib/arr/status';
 		font-size: 0.8rem;
 		min-height: 1rem;
 	}
+	/* Add button and the In library/Added chip must be the same box so the
+	   card doesn't jump when an item's state changes. Fixed height + flex
+	   centering keeps UA line-height/border quirks from shifting either. */
 	.poster-card button {
 		margin-top: 0;
 		width: 100%;
-		min-height: 2.75rem;
-		padding: 0.7rem 0;
+		height: 2.75rem;
+		padding: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		font-size: 0.95rem;
 	}
 	.added-chip {
-		display: block;
-		text-align: center;
-		min-height: 2.75rem;
-		padding: 0.7rem 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 2.75rem;
+		padding: 0;
+		box-sizing: border-box;
 		font-size: 0.95rem;
 		color: var(--muted-foreground);
 		background: var(--elevated);
