@@ -20,18 +20,29 @@ import type { ArrItemState } from '$lib/arr/status';
 	let results = $state<Result[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
+	// Set when one backend answers but the other doesn't — the member sees
+	// half the catalog and deserves to know which half is missing.
+	let partialError = $state<string | null>(null);
+	// Screen-reader announcement channel for add + watch-state transitions.
+	let announce = $state('');
 	let toast = $state<string | null>(null);
-	let busyId = $state<number | null>(null);
+	let toastIsError = $state(false);
+	let toastRetry = $state<(() => void) | null>(null);
+	let retryTick = $state(0);
+	// Keyed by kind + sourceId — a movie and a series can share a sourceId.
+	let busyId = $state<string | null>(null);
 
 	let searchSeq = 0;
 
 	$effect(() => {
 		const term = q.trim();
 		const m = mode;
+		retryTick; // re-run when the member taps Retry after a failure
 		if (term.length < 2) {
 			results = [];
 			loading = false;
 			error = null;
+			partialError = null;
 			return;
 		}
 
@@ -49,6 +60,7 @@ import type { ArrItemState } from '$lib/arr/status';
 
 			const merged: Result[] = [];
 			let firstError: string | null = null;
+			let failedKind: 'movie' | 'series' | null = null;
 			settled.forEach((s, i) => {
 				if (s.status === 'fulfilled' && Array.isArray(s.value.results)) {
 					for (const card of s.value.results as PosterCard[]) {
@@ -64,22 +76,40 @@ import type { ArrItemState } from '$lib/arr/status';
 							watchEpisodes: card.status?.episodes ?? null
 						});
 					}
-				} else if (!firstError) {
-					firstError =
-						s.status === 'fulfilled'
-							? (s.value.error ?? 'Search failed')
-							: 'Search failed — try again';
+				} else {
+					failedKind = kinds[i];
+					if (!firstError) {
+						firstError =
+							s.status === 'fulfilled'
+								? (s.value.error ?? 'Search failed')
+								: 'Search failed — try again';
+					}
 				}
 			});
 			results = merged;
-			error = merged.length === 0 ? firstError : null;
+			// Announce the result count — the only way a screen-reader user
+			// knows the grid changed.
+			announce = merged.length === 0 ? 'Nothing found' : `${merged.length} results`;
+			if (merged.length === 0) {
+				error = firstError;
+				partialError = null;
+			} else if (failedKind) {
+				error = null;
+				partialError =
+					failedKind === 'movie'
+						? "Couldn't reach the movie library — showing series instead."
+						: "Couldn't reach the series library — showing movies instead.";
+			} else {
+				error = null;
+				partialError = null;
+			}
 			loading = false;
 		}, 350);
 		return () => clearTimeout(timer);
 	});
 
 	async function add(card: Result) {
-		busyId = card.sourceId;
+		busyId = `${card.kind}:${card.sourceId}`;
 		try {
 			const res = await fetch('/api/add', {
 				method: 'POST',
@@ -94,25 +124,35 @@ import type { ArrItemState } from '$lib/arr/status';
 					card.watchId = data.id;
 					card.watchStatus = 'queued';
 				}
-				showToast(data.searchQueued === false ? `Added “${card.title}”` : `Added “${card.title}” — searching now`);
+				const message =
+					data.searchQueued === false
+						? `Added “${card.title}”`
+						: `Added “${card.title}” — searching now`;
+				announce = message;
+				showToast(message);
 			} else {
-				showToast(`Couldn't add: ${data.error ?? 'unknown error'}`, true);
+				showToast(`Couldn't add: ${data.error ?? 'unknown error'}`, true, () => add(card));
 			}
 		} catch {
-			showToast("Couldn't add — network error", true);
+			showToast("Couldn't add — network error", true, () => add(card));
 		} finally {
 			busyId = null;
 		}
 	}
 
-	function showToast(text: string, isError = false) {
+	function showToast(
+		text: string,
+		isError = false,
+		retry: (() => void) | null = null,
+		duration = isError ? 8000 : 4000
+	) {
 		toast = text;
 		toastIsError = isError;
+		toastRetry = retry;
 		setTimeout(() => {
 			if (toast === text) toast = null;
-		}, 4000);
+		}, duration);
 	}
-	let toastIsError = $state(false);
 
 	// Poll the add-status badge for recently added items (decision D4).
 	// One grid-wide self-scheduling timer: 5s while any watched card is
@@ -135,13 +175,20 @@ import type { ArrItemState } from '$lib/arr/status';
 						const res = await fetch(`/api/status/${card.kind}/${card.watchId}`);
 						if (!res.ok) continue;
 						const data = await res.json();
+						if (data.state !== card.watchStatus) {
+							announce =
+								data.state === 'available'
+									? `${card.title} is in the library now`
+									: `${card.title}: still on its way`;
+						}
 						card.watchStatus = data.state;
 						card.watchProgress = data.progress ?? null;
 						card.watchTimeLeft = data.timeLeftSeconds ?? null;
 						card.watchEpisodes = data.episodes ?? null;
 						if (data.state === 'available') {
 							card.inLibrary = true;
-							showToast(`“${card.title}” is available`);
+							// The emotional peak — give it a longer window on screen.
+							showToast(`“${card.title}” is available`, false, null, 8000);
 						}
 					} catch {
 						/* transient — keep last state */
@@ -160,6 +207,9 @@ import type { ArrItemState } from '$lib/arr/status';
 	});
 
 	// Member-facing vocabulary — the only place labels are worded.
+	// Problem states are hidden from members on purpose: the badge shows a
+	// neutral, truthful "Waiting" while the admin sees the real state in the
+	// console. Failures route to the admin, not the household.
 	const WATCH_LABEL: Record<Exclude<WatchState, 'available'>, string> = {
 		waiting: 'Looking for it…',
 		queued: 'Queued',
@@ -167,7 +217,7 @@ import type { ArrItemState } from '$lib/arr/status';
 		downloading: 'Downloading…',
 		importing: 'Importing…',
 		partial: 'Episodes',
-		attention: 'Needs attention',
+		attention: 'Waiting',
 		missing: 'Missing',
 		unreleased: 'Unreleased'
 	};
@@ -180,7 +230,7 @@ import type { ArrItemState } from '$lib/arr/status';
 		const s = card.watchStatus;
 		if (!s || s === 'available') return 'In library';
 		if (s === 'partial' && card.watchEpisodes) {
-			return `${card.watchEpisodes.have}/${card.watchEpisodes.total} eps`;
+			return `${card.watchEpisodes.have} of ${card.watchEpisodes.total}`;
 		}
 		return WATCH_LABEL[s].replace(/…$/, '');
 	}
@@ -191,9 +241,9 @@ import type { ArrItemState } from '$lib/arr/status';
 			case 'queued':
 			case 'importing':
 				return 'active';
-			case 'attention':
 			case 'paused':
 				return 'warn';
+			case 'attention':
 			case 'partial':
 			case 'missing':
 			case 'unreleased':
@@ -212,6 +262,7 @@ import type { ArrItemState } from '$lib/arr/status';
 		if (s === 'partial' && card.watchEpisodes) {
 			return `${card.watchEpisodes.have} of ${card.watchEpisodes.total} episodes`;
 		}
+		if (s === 'attention') return null; // hidden from members — admin sees it in the console
 		if (s === 'waiting' || (s === 'downloading' && card.watchTimeLeft == null)) return WATCH_LABEL[s];
 		return null; // queued/paused/importing/attention — the badge already says it
 	}
@@ -236,8 +287,6 @@ import type { ArrItemState } from '$lib/arr/status';
 				return { mode: 'indeterminate', progress: null, tone: 'primary' };
 			case 'paused':
 				return p != null ? { mode: 'determinate', progress: p, tone: 'warning' } : { mode: 'indeterminate', progress: null, tone: 'warning' };
-			case 'attention':
-				return p != null ? { mode: 'determinate', progress: p, tone: 'warning' } : { mode: 'indeterminate', progress: null, tone: 'warning' };
 			case 'partial':
 				return p != null ? { mode: 'determinate', progress: p, tone: 'muted' } : null;
 			default:
@@ -252,8 +301,9 @@ import type { ArrItemState } from '$lib/arr/status';
 	];
 
 	function initials(title: string): string {
-		return title
-			.split(/\s+/)
+		const parts = title.trim().split(/\s+/).filter(Boolean);
+		if (parts.length === 0) return '';
+		return parts
 			.slice(0, 2)
 			.map((w) => w[0]!.toUpperCase())
 			.join('');
@@ -264,19 +314,23 @@ import type { ArrItemState } from '$lib/arr/status';
 	<title>Addarr</title>
 </svelte:head>
 
+<h1 class="sr-only">Search</h1>
+
 <div class="search-bar">
 	<input
 		class="search-input"
 		bind:value={q}
 		placeholder="Search for a movie or series…"
+		aria-label="Search for a movie or series"
 		autocomplete="off"
 	/>
-	<div class="mode-tabs" role="tablist">
+	<div class="mode-tabs" role="group" aria-label="Media type">
 		{#each modes as m (m.key)}
 			<button
 				type="button"
 				class="tab"
 				class:active={mode === m.key}
+				aria-pressed={mode === m.key}
 				onclick={() => (mode = m.key)}
 			>
 				{m.label}
@@ -288,10 +342,22 @@ import type { ArrItemState } from '$lib/arr/status';
 {#if loading}
 	<p class="hint">Searching…</p>
 {:else if error}
-	<p class="msg error">{error}</p>
+	<p class="msg error" role="alert">
+		{error}
+		<button class="secondary retry-btn" onclick={() => retryTick++}>Retry</button>
+	</p>
+{:else if partialError}
+	<p class="msg error" role="alert">
+		{partialError}
+		<button class="secondary retry-btn" onclick={() => retryTick++}>Retry</button>
+	</p>
 {:else if q.trim().length >= 2 && results.length === 0}
 	<p class="hint">Nothing found. Try another title?</p>
+{:else if results.length === 0}
+	<p class="hint empty-invite">Type a movie or series name above — one tap and it's on its way to your library.</p>
 {/if}
+
+<div class="sr-only" aria-live="assertive">{announce}</div>
 
 <div class="grid">
 	{#each results as card (card.kind + card.sourceId)}
@@ -327,7 +393,7 @@ import type { ArrItemState } from '$lib/arr/status';
 								class:indeterminate={bar.mode === 'indeterminate'}
 								class:tone-muted={bar.tone === 'muted'}
 								class:tone-warning={bar.tone === 'warning'}
-								style={bar.mode === 'determinate' ? `width: ${Math.min(100, Math.max(0, bar.progress ?? 0))}%` : ''}
+								style={bar.mode === 'determinate' ? `transform: scaleX(${Math.min(1, Math.max(0, (bar.progress ?? 0) / 100))})` : ''}
 							></div>
 						</div>
 					{/if}
@@ -343,12 +409,15 @@ import type { ArrItemState } from '$lib/arr/status';
 				<p class="title" title={card.title}>{card.title}</p>
 				<p class="year">{card.year ?? ''}</p>
 				{#if card.inLibrary}
-					<button class="secondary" disabled>Already added</button>
+					<span class="added-chip">In library</span>
 				{:else if card.watchStatus && card.watchStatus !== 'available'}
-					<button class="secondary" disabled title="Already in your library — waiting for download">Added</button>
+					<span class="added-chip">Added</span>
 				{:else}
-					<button onclick={() => add(card)} disabled={busyId === card.sourceId}>
-						{busyId === card.sourceId ? 'Adding…' : 'Add'}
+					<button
+						onclick={() => add(card)}
+						disabled={busyId === `${card.kind}:${card.sourceId}`}
+					>
+						{busyId === `${card.kind}:${card.sourceId}` ? 'Adding…' : 'Add'}
 					</button>
 				{/if}
 			</div>
@@ -357,7 +426,19 @@ import type { ArrItemState } from '$lib/arr/status';
 </div>
 
 {#if toast}
-	<div class="toast" class:error={toastIsError} role="status">{toast}</div>
+	<div class="toast" class:error={toastIsError} role={toastIsError ? 'alert' : 'status'}>
+		{toast}
+		{#if toastRetry}
+			<button
+				class="toast-retry"
+				onclick={() => {
+					const r = toastRetry;
+					toast = null;
+					r?.();
+				}}
+			>Retry</button>
+		{/if}
+	</div>
 {/if}
 
 <style>
@@ -375,11 +456,12 @@ import type { ArrItemState } from '$lib/arr/status';
 	}
 	.tab {
 		margin-top: 0;
+		min-height: 2.75rem;
 		background: var(--card);
 		border: 1px solid var(--border);
 		color: var(--muted-foreground);
 		font-weight: 500;
-		padding: 0.35rem 0.9rem;
+		padding: 0.55rem 1rem;
 		border-radius: var(--radius);
 	}
 	.tab.active {
@@ -445,10 +527,10 @@ import type { ArrItemState } from '$lib/arr/status';
 		background: var(--primary);
 	}
 	.badge.warn {
-		background: var(--warning);
+		background: color-mix(in srgb, var(--warning) 80%, var(--foreground));
 	}
 	.badge.muted {
-		background: var(--muted-foreground);
+		background: color-mix(in srgb, var(--muted-foreground) 80%, var(--foreground));
 	}
 	.watch {
 		display: block;
@@ -469,8 +551,10 @@ import type { ArrItemState } from '$lib/arr/status';
 	}
 	.progress-fill {
 		height: 100%;
+		width: 100%;
 		background: var(--primary);
-		transition: width 1s ease;
+		transform-origin: left;
+		transition: transform 1s ease;
 	}
 	.progress-fill.tone-muted {
 		background: var(--muted-foreground);
@@ -481,6 +565,7 @@ import type { ArrItemState } from '$lib/arr/status';
 	}
 	.progress-fill.indeterminate {
 		width: 25%;
+		transform: none;
 		transition: none;
 		animation: progress-slide 1.4s ease-in-out infinite;
 	}
@@ -502,9 +587,11 @@ import type { ArrItemState } from '$lib/arr/status';
 		font-size: 0.85rem;
 		font-weight: 450;
 		line-height: 1.25;
-		white-space: nowrap;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.poster-meta .year {
 		margin: 0.1rem 0 0.4rem;
@@ -515,26 +602,57 @@ import type { ArrItemState } from '$lib/arr/status';
 	.poster-card button {
 		margin-top: 0;
 		width: 100%;
-		padding: 0.4rem 0;
-		font-size: 0.85rem;
+		min-height: 2.75rem;
+		padding: 0.7rem 0;
+		font-size: 0.95rem;
+	}
+	.added-chip {
+		display: block;
+		text-align: center;
+		min-height: 2.75rem;
+		padding: 0.7rem 0;
+		font-size: 0.95rem;
+		color: var(--muted-foreground);
+		background: var(--elevated);
+		border: 1px solid var(--border);
+	}
+	.empty-invite {
+		margin-top: 2.5rem;
+		max-width: 34rem;
+	}
+	.retry-btn {
+		margin-top: 0;
+		margin-left: 0.6rem;
+		padding: 0.2rem 0.7rem;
+		font-size: 0.8rem;
+		vertical-align: middle;
 	}
 	.hint {
 		color: var(--muted-foreground);
 	}
 	.toast {
 		position: fixed;
-		bottom: 1.5rem;
+		bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
 		background: var(--success);
 		color: var(--primary-foreground);
 		font-weight: 450;
 		padding: 0.7rem 1.3rem;
-		border-radius: 8px;
+		border-radius: var(--radius);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 	}
 	.toast.error {
 		background: var(--destructive);
+		color: var(--primary-foreground);
+	}
+	.toast-retry {
+		margin-top: 0;
+		margin-left: 0.75rem;
+		padding: 0.45rem 0.9rem;
+		font-size: 0.85rem;
+		background: transparent;
+		border: 1px solid color-mix(in srgb, var(--primary-foreground) 55%, transparent);
 		color: var(--primary-foreground);
 	}
 </style>

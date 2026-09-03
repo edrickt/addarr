@@ -53,7 +53,15 @@
 		seasonMonitorPolicy = preset?.season_monitor_policy ?? 'all';
 	});
 
-	const availabilities = ['announced', 'inCinemas', 'released'];
+	const availabilities = [
+		{ value: 'announced', label: 'Announced' },
+		{ value: 'inCinemas', label: 'In theaters' },
+		{ value: 'released', label: 'Released' }
+	];
+
+	function toggleTag(id: number, checked: boolean) {
+		selectedTags = checked ? [...selectedTags, id] : selectedTags.filter((t) => t !== id);
+	}
 
 	function save(e: SubmitEvent) {
 		e.preventDefault();
@@ -77,26 +85,12 @@
 	<label for="pf-name">Name</label>
 	<input id="pf-name" bind:value={name} placeholder={preset ? undefined : 'e.g. Kids shows'} />
 
+	<p class="section-label">What Add does</p>
 	<label for="pf-profile">Quality profile</label>
 	<select id="pf-profile" bind:value={qualityProfileId}>
 		<option value={null} disabled>Select profile…</option>
 		{#each options.qualityProfiles as q (q.id)}
 			<option value={q.id}>{q.name}</option>
-		{/each}
-	</select>
-
-	<label for="pf-root">Root folder</label>
-	<select id="pf-root" bind:value={rootFolderPath}>
-		<option value={null} disabled>Select folder…</option>
-		{#each options.rootFolders as r (r.id)}
-			<option value={r.path}>{r.path}</option>
-		{/each}
-	</select>
-
-	<label for="pf-tags">Tags</label>
-	<select id="pf-tags" multiple bind:value={selectedTags} size={Math.min(4, Math.max(1, options.tags.length))}>
-		{#each options.tags as t (t.id)}
-			<option value={t.id}>{t.label}</option>
 		{/each}
 	</select>
 
@@ -106,22 +100,22 @@
 	</label>
 	<label class="check">
 		<input type="checkbox" bind:checked={searchOnAdd} />
-		Search when added (addOptions.searchFor*)
+		Search for the title as soon as it's added
 	</label>
 
 	{#if service === 'radarr'}
 		<label for="pf-minavail">Minimum availability</label>
 		<select id="pf-minavail" bind:value={minimumAvailability}>
-			{#each availabilities as a (a)}
-				<option value={a}>{a}</option>
+			{#each availabilities as a (a.value)}
+				<option value={a.value}>{a.label}</option>
 			{/each}
 		</select>
 	{:else}
 		<label for="pf-stype">Series type</label>
 		<select id="pf-stype" bind:value={seriesTypeDefault}>
-			<option value="standard">standard</option>
-			<option value="daily">daily</option>
-			<option value="anime">anime</option>
+			<option value="standard">Standard</option>
+			<option value="daily">Daily (talk shows)</option>
+			<option value="anime">Anime</option>
 		</select>
 
 		<label for="pf-smon">Season monitoring</label>
@@ -133,15 +127,57 @@
 		</select>
 	{/if}
 
+	<p class="section-label">Where it goes</p>
+	<label for="pf-root">Root folder</label>
+	<select id="pf-root" bind:value={rootFolderPath}>
+		<option value={null} disabled>Select folder…</option>
+		{#each options.rootFolders as r (r.id)}
+			<option value={r.path}>{r.path}</option>
+		{/each}
+	</select>
+
+	<span class="section-label">Tags</span>
+	{#if options.tags.length === 0}
+		<p class="hint">No tags yet.</p>
+	{:else}
+		<div class="tag-group">
+			{#each options.tags as t (t.id)}
+				<label class="check">
+					<input
+						type="checkbox"
+						checked={selectedTags.includes(t.id)}
+						onchange={(e) => toggleTag(t.id, e.currentTarget.checked)}
+					/>
+					{t.label}
+				</label>
+			{/each}
+		</div>
+	{/if}
+
 	<button type="submit" disabled={busy || !name.trim() || !qualityProfileId || !rootFolderPath}>
 		Save preset
 	</button>
+	{#if !qualityProfileId || !rootFolderPath}
+		<p class="hint" style="margin-top:0.4rem">Choose a quality profile and root folder to save.</p>
+	{/if}
 	{#if oncancel}
 		<button type="button" class="secondary" onclick={oncancel}>Cancel</button>
 	{/if}
 </form>
 
 <style>
+	.section-label {
+		display: block;
+		margin: 1.25rem 0 0.3rem;
+		color: var(--muted-foreground);
+		font-size: 0.8rem;
+		font-weight: 500;
+	}
+	.tag-group {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 1.2rem;
+	}
 	.check {
 		display: flex;
 		align-items: center;

@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { modal } from '$lib/actions/modal';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+
 	type Item = {
 		id: number;
 		title: string;
@@ -13,9 +18,26 @@
 	};
 
 	type Tab = 'library' | 'queue' | 'history' | 'exclusions' | 'blocklist' | 'calendar';
+	type Service = 'radarr' | 'sonarr';
 
-	let tab = $state<Tab>('library');
-	let service = $state<'radarr' | 'sonarr'>('radarr');
+	// Tab and service live in the URL: refresh and deep links keep their place.
+	const TAB_KEYS: Tab[] = ['library', 'queue', 'history', 'exclusions', 'blocklist', 'calendar'];
+	let tab = $derived<Tab>(
+		TAB_KEYS.includes(page.url.searchParams.get('tab') as Tab)
+			? (page.url.searchParams.get('tab') as Tab)
+			: 'library'
+	);
+	let service = $derived<Service>(
+		page.url.searchParams.get('service') === 'sonarr' ? 'sonarr' : 'radarr'
+	);
+
+	function setTab(t: Tab) {
+		goto(`/console?tab=${t}&service=${service}`, { replaceState: true, noScroll: true, keepFocus: true });
+	}
+	function setService(s: Service) {
+		goto(`/console?tab=${tab}&service=${s}`, { replaceState: true, noScroll: true, keepFocus: true });
+	}
+
 	let data = $state<Record<string, unknown> | null>(null);
 	let loading = $state(false);
 	let msg = $state<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -37,8 +59,22 @@
 	// Episodes dialog state
 	let episodesFor = $state<Item | null>(null);
 	let episodes = $state<Record<string, unknown>[]>([]);
+	// Long-running series can have hundreds of episodes — paginate the dialog.
+	const EP_PAGE_SIZE = 25;
+	let epPage = $state(1);
+
+	// Lightweight confirmation for lower-stakes removals (queue, exclusions,
+	// blocklist) — the typed-confirmation dialog stays reserved for library deletes.
+	type ConfirmTarget = { title: string; body?: string; qs: string; okText: string } | null;
+	let confirmTarget = $state<ConfirmTarget>(null);
 
 	let loadSeq = 0;
+
+	// Library pagination — a 1,000-item library must not render 4,000 buttons.
+	const LIB_PAGE_SIZE = 50;
+	let libPage = $state(1);
+	const libItems = $derived(((data?.items as Item[]) ?? []) as Item[]);
+
 	async function load() {
 		const seq = ++loadSeq; // guard against out-of-order responses when switching tabs quickly
 		loading = true;
@@ -66,11 +102,12 @@
 	$effect(() => {
 		tab;
 		service;
+		libPage = 1;
 		load();
 		loadSummary();
 	});
 
-	async function send(method: string, qs: string, body?: unknown) {
+	async function send(method: string, qs: string, body?: unknown, okText = 'Done') {
 		msg = null;
 		try {
 			const res = await fetch(`/api/console/${tab}?service=${service}${qs}`, {
@@ -80,7 +117,7 @@
 			});
 			const out = await res.json().catch(() => ({}));
 			msg = res.ok
-				? { kind: 'ok', text: 'Done' }
+				? { kind: 'ok', text: okText }
 				: { kind: 'error', text: out.error ?? 'Failed' };
 			if (res.ok) {
 				closeDialogs();
@@ -121,14 +158,16 @@
 			tags: editTags
 		};
 		if (service === 'sonarr' && editItem.seasons) body.seasons = editSeasons;
-		send('PATCH', `&id=${editItem.id}`, body);
+		send('PATCH', `&id=${editItem.id}`, body, 'Saved changes');
 	}
 
 	function doDelete() {
 		if (!deleteItem) return;
 		send(
 			'DELETE',
-			`&id=${deleteItem.id}&confirm=${encodeURIComponent(confirmText)}&deleteFiles=${deleteFiles ? 1 : 0}&addExclusion=${addExclusion ? 1 : 0}`
+			`&id=${deleteItem.id}&confirm=${encodeURIComponent(confirmText)}&deleteFiles=${deleteFiles ? 1 : 0}&addExclusion=${addExclusion ? 1 : 0}`,
+			undefined,
+			`Deleted “${deleteItem.title}”`
 		);
 	}
 
@@ -137,12 +176,13 @@
 			service === 'radarr'
 				? { name: 'MoviesSearch', ids: [item.id] }
 				: { name: 'SeriesSearch', ids: [item.id] };
-		send('POST', '', body);
+		send('POST', '', body, `Search started for “${item.title}”`);
 	}
 
 	async function openEpisodes(item: Item) {
 		episodesFor = item;
 		episodes = [];
+		epPage = 1;
 		const res = await fetch(`/api/console/episodes?service=sonarr&seriesId=${item.id}`);
 		const out = await res.json();
 		if (res.ok) episodes = out.items ?? [];
@@ -150,8 +190,23 @@
 	}
 
 	function searchEpisode(episodeId: number) {
-		send('POST', '', { name: 'EpisodesSearch', ids: [episodeId] });
+		send('POST', '', { name: 'EpisodesSearch', ids: [episodeId] }, 'Episode search started');
 	}
+
+	const SERIES_TYPE: Record<string, string> = {
+		standard: 'Standard',
+		daily: 'Daily',
+		anime: 'Anime'
+	};
+
+	const EVENT_LABEL: Record<string, string> = {
+		grabbed: 'Grabbed',
+		downloadFolderImported: 'Imported',
+		movieFolderImported: 'Imported',
+		episodeImported: 'Imported',
+		renamed: 'Renamed',
+		deleted: 'Deleted'
+	};
 
 	const tabs: { key: Tab; label: string }[] = [
 		{ key: 'library', label: 'Library' },
@@ -209,42 +264,49 @@
 	<title>Console — Addarr</title>
 </svelte:head>
 
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && (editItem || deleteItem || episodesFor)) closeDialogs();
+	}}
+/>
+
 <h1>Operations console</h1>
 
 {#if summary}
 	<div class="kpi-strip">
 		<div class="kpi">
 			<div class="kpi-value">{summary.library}</div>
-			<div class="kpi-label">in library</div>
+			<div class="kpi-label">In library</div>
 		</div>
 		<div class="kpi">
 			<div class="kpi-value">{summary.monitored}</div>
-			<div class="kpi-label">monitored</div>
+			<div class="kpi-label">Monitored</div>
 		</div>
 		<div class="kpi">
 			<div class="kpi-value">{summary.queue}</div>
-			<div class="kpi-label">in queue</div>
+			<div class="kpi-label">In queue</div>
 		</div>
 		<div class="kpi">
 			<div class="kpi-value">{summary.blocked}</div>
-			<div class="kpi-label">blocklisted</div>
+			<div class="kpi-label">Blocklisted</div>
 		</div>
 	</div>
 {/if}
 
 <div class="controls">
-	<div class="tabs">
+	<div class="tabs" role="group" aria-label="Console sections">
 		{#each tabs as t (t.key)}
-			<button class="tab" class:active={tab === t.key} onclick={() => (tab = t.key)}>{t.label}</button>
+			<button class="tab" class:active={tab === t.key} aria-pressed={tab === t.key} onclick={() => setTab(t.key)}>{t.label}</button>
 		{/each}
 	</div>
-	<div class="tabs">
-		<button class="tab" class:active={service === 'radarr'} onclick={() => (service = 'radarr')}>Radarr</button>
-		<button class="tab" class:active={service === 'sonarr'} onclick={() => (service = 'sonarr')}>Sonarr</button>
+	<div class="service-switch" role="group" aria-label="Service">
+		<span class="service-label">Service</span>
+		<button class="tab" class:active={service === 'radarr'} aria-pressed={service === 'radarr'} onclick={() => setService('radarr')}>Radarr</button>
+		<button class="tab" class:active={service === 'sonarr'} aria-pressed={service === 'sonarr'} onclick={() => setService('sonarr')}>Sonarr</button>
 	</div>
 </div>
 
-{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}">{msg.text}</p>{/if}
+{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : undefined}>{msg.text}</p>{/if}
 {#if loading}<p class="hint">Loading…</p>{/if}
 
 {#if !loading && data}
@@ -255,11 +317,11 @@
 		{/if}
 		<div class="card">
 			<ul class="rows">
-				{#each (data.items as Item[]) ?? [] as item (item.id)}
+				{#each libItems.slice((libPage - 1) * LIB_PAGE_SIZE, libPage * LIB_PAGE_SIZE) as item (item.id)}
 					<li>
 						<div class="grow">
 							<strong>{item.title}</strong> <small>({item.year ?? '—'})</small>
-							<small>{item.detail}{#if item.seriesType} · {item.seriesType}{/if} · {item.monitored ? 'monitored' : 'unmonitored'}</small>
+							<small>{item.detail}{#if item.seriesType} · {SERIES_TYPE[item.seriesType] ?? item.seriesType}{/if} · {item.monitored ? 'monitored' : 'unmonitored'}</small>
 						</div>
 						<div class="actions">
 							<button class="secondary" onclick={() => searchItem(item)} disabled={loading}>Search</button>
@@ -275,6 +337,13 @@
 				{/each}
 			</ul>
 		</div>
+		{#if libItems.length > LIB_PAGE_SIZE}
+			<div class="pager">
+				<button class="secondary" disabled={libPage <= 1 || loading} onclick={() => libPage--}>Previous</button>
+				<span class="hint">{(libPage - 1) * LIB_PAGE_SIZE + 1}–{Math.min(libPage * LIB_PAGE_SIZE, libItems.length)} of {libItems.length}</span>
+				<button class="secondary" disabled={libPage * LIB_PAGE_SIZE >= libItems.length || loading} onclick={() => libPage++}>Next</button>
+			</div>
+		{/if}
 
 	<!-- QUEUE -->
 	{:else if tab === 'queue'}
@@ -295,9 +364,12 @@
 							<button
 								class="secondary danger"
 								onclick={() => {
-									if (confirm(`Remove “${q.title}” from the queue${service === 'radarr' ? ' and delete from download client' : ''}?`)) {
-										send('DELETE', `&id=${q.id}&removeFromClient=1`);
-									}
+									confirmTarget = {
+										title: 'Remove from queue',
+										body: `Remove “${String(q.title ?? '')}” from the queue and delete it from the download client?`,
+										qs: `&id=${q.id}&removeFromClient=1`,
+										okText: 'Removed from queue'
+									};
 								}}
 							>Remove</button>
 						</div>
@@ -316,7 +388,7 @@
 					<li>
 						<div class="grow">
 							<strong>{String(h.sourceTitle ?? sub(h, 'movie')?.title ?? sub(h, 'series')?.title ?? '—')}</strong>
-							<small><span class="mono">{when(h)}</span> · {String(h.eventType ?? '')} · {String(sub(sub(h, 'quality'), 'quality')?.name ?? '')}</small>
+							<small><span class="mono">{when(h)}</span> · {EVENT_LABEL[String(h.eventType ?? '')] ?? String(h.eventType ?? '')} · {String(sub(sub(h, 'quality'), 'quality')?.name ?? '')}</small>
 						</div>
 					</li>
 				{:else}
@@ -333,7 +405,17 @@
 					<li>
 						<div class="grow"><strong>{x.movieTitle ?? x.title ?? x.tvdbId ?? '—'}</strong></div>
 						<div class="actions">
-							<button class="secondary danger" onclick={() => send('DELETE', `&id=${x.id}`)}>Remove</button>
+							<button
+								class="secondary danger"
+								onclick={() => {
+									confirmTarget = {
+										title: 'Remove exclusion',
+										body: `Allow “${String(x.movieTitle ?? x.title ?? x.tvdbId ?? 'this item')}” to be imported again?`,
+										qs: `&id=${x.id}`,
+										okText: 'Removed from import exclusions'
+									};
+								}}
+							>Remove</button>
 						</div>
 					</li>
 				{:else}
@@ -350,7 +432,17 @@
 					<li>
 						<div class="grow"><strong>{b.sourceTitle ?? b.title ?? '—'}</strong> <small><span class="mono">{when(b)}</span></small></div>
 						<div class="actions">
-							<button class="secondary danger" onclick={() => send('DELETE', `&id=${b.id}`)}>Remove</button>
+							<button
+								class="secondary danger"
+								onclick={() => {
+									confirmTarget = {
+										title: 'Remove from blocklist',
+										body: `Remove “${String(b.sourceTitle ?? b.title ?? 'this item')}” from the blocklist? It can be added again later.`,
+										qs: `&id=${b.id}`,
+										okText: 'Removed from blocklist'
+									};
+								}}
+							>Remove</button>
 						</div>
 					</li>
 				{:else}
@@ -363,7 +455,7 @@
 	{:else if tab === 'calendar'}
 		<div class="card">
 			<ul class="rows">
-				{#each (data.items as Record<string, unknown>[]) ?? [] as c (String(c.when) + String(c.title))}
+				{#each (data.items as Record<string, unknown>[]) ?? [] as c, i (i)}
 					<li>
 						<div class="grow"><strong>{c.title}</strong> <small>{c.what} · <span class="mono">{when(c)}</span></small></div>
 					</li>
@@ -378,7 +470,7 @@
 <!-- Global curated command -->
 <div class="card">
 	<h2>Commands</h2>
-	<button class="secondary" onclick={() => send('POST', '', { name: 'RefreshMonitoredDownloads' })}>
+	<button class="secondary" onclick={() => send('POST', '', { name: 'RefreshMonitoredDownloads' }, 'Refresh queued')}>
 		Refresh monitored downloads
 	</button>
 	<p class="hint">Per-item Search buttons live in the Library tab. No free-form commands, by design.</p>
@@ -386,8 +478,16 @@
 
 <!-- EDIT DIALOG -->
 {#if editItem}
-	<div class="card dialog">
-		<h2>Edit “{editItem.title}”</h2>
+	<div class="overlay">
+		<div
+			class="card dialog"
+			role="dialog"
+			aria-modal="true"
+			aria-label={`Edit “${editItem.title}”`}
+			tabindex="-1"
+			use:modal
+		>
+			<h2>Edit “{editItem.title}”</h2>
 		<label class="check"><input type="checkbox" bind:checked={editMonitored} /> Monitored</label>
 
 		<label for="edit-profile">Quality profile</label>
@@ -404,12 +504,26 @@
 			{/each}
 		</select>
 
-		<label for="edit-tags">Tags</label>
-		<select id="edit-tags" multiple bind:value={editTags} size={3}>
-			{#each ((data?.tags ?? []) as Tag[]) as t (t.id)}
-				<option value={t.id}>{t.label}</option>
-			{/each}
-		</select>
+		<span class="section-label">Tags</span>
+		{#if ((data?.tags ?? []) as Tag[]).length === 0}
+			<p class="hint">No tags in {service === 'radarr' ? 'Radarr' : 'Sonarr'} yet.</p>
+		{:else}
+			<div class="tag-group">
+				{#each ((data?.tags ?? []) as Tag[]) as t (t.id)}
+					<label class="check">
+						<input
+							type="checkbox"
+							checked={editTags.includes(t.id)}
+							onchange={(e) => {
+								if (e.currentTarget.checked) editTags = [...editTags, t.id];
+								else editTags = editTags.filter((id) => id !== t.id);
+							}}
+						/>
+						{t.label}
+					</label>
+				{/each}
+			</div>
+		{/if}
 
 		{#if service === 'sonarr' && editSeasons.length > 0}
 			<p class="hint" style="margin-bottom:0">Season monitoring</p>
@@ -423,30 +537,48 @@
 
 		<button onclick={saveEdit} disabled={loading}>Save</button>
 		<button class="secondary" onclick={closeDialogs}>Cancel</button>
+		</div>
 	</div>
 {/if}
 
 <!-- DELETE DIALOG (typed confirmation) -->
 {#if deleteItem}
-	<div class="card dialog">
-		<h2>Delete “{deleteItem.title}”</h2>
-		<p class="hint">This cannot be undone. Type the title exactly to confirm.</p>
-		<label class="check"><input type="checkbox" bind:checked={deleteFiles} /> Also delete files from disk</label>
-		<label class="check"><input type="checkbox" bind:checked={addExclusion} /> Add import exclusion (block re-adding)</label>
-		<input bind:value={confirmText} placeholder={deleteItem.title} />
-		<button class="danger" disabled={confirmText !== deleteItem.title || loading} onclick={doDelete}>
-			Delete permanently
-		</button>
-		<button class="secondary" onclick={closeDialogs}>Cancel</button>
+	<div class="overlay">
+		<div
+			class="card dialog"
+			role="dialog"
+			aria-modal="true"
+			aria-label={`Delete “${deleteItem.title}”`}
+			tabindex="-1"
+			use:modal
+		>
+			<h2>Delete “{deleteItem.title}”</h2>
+			<p class="hint">This cannot be undone. Type the title exactly to confirm.</p>
+			<label class="check"><input type="checkbox" bind:checked={deleteFiles} /> Also delete files from disk</label>
+			<label class="check"><input type="checkbox" bind:checked={addExclusion} /> Add import exclusion (block re-adding)</label>
+			<input bind:value={confirmText} aria-label="Type the title to confirm deletion" />
+			<button class="danger" disabled={confirmText !== deleteItem.title || loading} onclick={doDelete}>
+				Delete permanently
+			</button>
+			<button class="secondary" onclick={closeDialogs}>Cancel</button>
+		</div>
 	</div>
 {/if}
 
 <!-- EPISODES DIALOG -->
 {#if episodesFor}
-	<div class="card dialog">
-		<h2>Episodes — {episodesFor.title}</h2>
+	<div class="overlay">
+		<div
+			class="card dialog wide"
+			role="dialog"
+			aria-modal="true"
+			aria-label={`Episodes — ${episodesFor.title}`}
+			tabindex="-1"
+			use:modal
+		>
+			<h2>Episodes — {episodesFor.title}</h2>
 		<ul class="rows">
-			{#each episodes as ep (String(ep.id))}
+			{#each episodes.slice((epPage - 1) * EP_PAGE_SIZE, epPage * EP_PAGE_SIZE) as ep (String(ep.id))}
 				<li>
 					<div class="grow">
 						<strong>{ep.seasonNumber}x{String(ep.episodeNumber).padStart(2, '0')}</strong>
@@ -458,8 +590,32 @@
 				</li>
 			{/each}
 		</ul>
+		{#if episodes.length > EP_PAGE_SIZE}
+			<div class="pager">
+				<button class="secondary" disabled={epPage <= 1} onclick={() => epPage--}>Previous</button>
+				<span class="hint">{(epPage - 1) * EP_PAGE_SIZE + 1}–{Math.min(epPage * EP_PAGE_SIZE, episodes.length)} of {episodes.length}</span>
+				<button class="secondary" disabled={epPage * EP_PAGE_SIZE >= episodes.length} onclick={() => epPage++}>Next</button>
+			</div>
+		{/if}
 		<button class="secondary" onclick={closeDialogs}>Close</button>
+		</div>
 	</div>
+{/if}
+
+<!-- LIGHTWEIGHT CONFIRMATION (queue / exclusions / blocklist) -->
+{#if confirmTarget}
+	<ConfirmDialog
+		title={confirmTarget.title}
+		body={confirmTarget.body ?? ''}
+		confirmLabel="Remove"
+		busy={loading}
+		onconfirm={() => {
+			const t = confirmTarget;
+			confirmTarget = null;
+			if (t) send('DELETE', t.qs, undefined, t.okText);
+		}}
+		oncancel={() => (confirmTarget = null)}
+	/>
 {/if}
 
 <style>
@@ -489,6 +645,29 @@
 		border-color: var(--foreground);
 		color: var(--background);
 		font-weight: 450;
+	}
+	.service-switch {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.service-label {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		margin-right: 0.25rem;
+	}
+	.section-label {
+		display: block;
+		margin: 0.75rem 0 0.3rem;
+		color: var(--muted-foreground);
+		font-size: 0.8rem;
+		font-weight: 500;
+	}
+	.tag-group {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 1.2rem;
 	}
 	.rows {
 		list-style: none;
@@ -523,9 +702,6 @@
 		padding: 0.3rem 0.7rem;
 		font-size: 0.85rem;
 	}
-	.danger {
-		color: var(--destructive);
-	}
 	.check {
 		display: flex;
 		align-items: center;
@@ -535,8 +711,5 @@
 	}
 	.check input {
 		width: auto;
-	}
-	.dialog {
-		border-color: var(--primary);
 	}
 </style>

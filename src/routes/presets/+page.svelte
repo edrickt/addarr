@@ -1,5 +1,6 @@
 <script lang="ts">
 	import PresetForm from '$lib/components/PresetForm.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	type PresetRow = {
 		id: number;
@@ -25,6 +26,8 @@
 	let busy = $state(false);
 
 	let editing = $state<PresetRow | null>(null);
+	let deleting = $state<PresetRow | null>(null);
+	let showNew = $state(false);
 
 	async function load() {
 		msg = null;
@@ -39,6 +42,9 @@
 			}
 			presets = data.presets;
 			options = data.options;
+			// First visit with no presets: open the form — it powers the member
+			// Add button, so an empty list must lead straight to creation.
+			showNew = presets.length === 0;
 		} catch {
 			msg = { kind: 'error', text: 'Failed to load presets' };
 		}
@@ -47,7 +53,7 @@
 		load();
 	});
 
-	async function send(method: string, body?: unknown, extraQs = '') {
+	async function send(method: string, body?: unknown, extraQs = '', okText = 'Preset saved') {
 		msg = null;
 		busy = true;
 		try {
@@ -60,7 +66,8 @@
 			if (res.ok) {
 				await load();
 				editing = null;
-				msg = { kind: 'ok', text: 'Saved' };
+				showNew = false;
+				msg = { kind: 'ok', text: okText };
 			} else {
 				msg = { kind: 'error', text: data.error ?? 'Failed' };
 			}
@@ -90,7 +97,7 @@
 	<button class="tab" class:active={service === 'sonarr'} onclick={() => (service = 'sonarr')}>Sonarr</button>
 </div>
 
-{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}">{msg.text}</p>{/if}
+{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : undefined}>{msg.text}</p>{/if}
 
 {#if !options}
 	<p class="hint">Connect {service} in Settings first.</p>
@@ -116,31 +123,58 @@
 					</div>
 					<div class="actions">
 						{#if !p.is_default}
-							<button class="secondary" disabled={busy} onclick={() => send('PATCH', { isDefault: true }, `&id=${p.id}`)}>
+							<button class="secondary" disabled={busy} onclick={() => send('PATCH', { isDefault: true }, `&id=${p.id}`, 'Default updated')}>
 								Make default
 							</button>
 						{/if}
 						<button class="secondary" onclick={() => (editing = p)}>Edit</button>
-						<button class="secondary danger" disabled={busy} onclick={() => send('DELETE', undefined, `&id=${p.id}`)}>
+						<button class="secondary danger" disabled={busy} onclick={() => (deleting = p)}>
 							Delete
 						</button>
 					</div>
 				</li>
+			{:else}
+				<li><small>No presets yet — the form below creates the one that powers your family's <strong>Add</strong> button.</small></li>
 			{/each}
 		</ul>
 	</div>
 
-	<div class="card">
-		<h2>{editing ? `Edit “${editing.name}”` : 'New preset'}</h2>
-		<PresetForm
-			{service}
-			{options}
-			preset={editing}
-			oncancel={() => (editing = null)}
-			onsave={(body: Record<string, unknown>) => send(editing ? 'PATCH' : 'POST', body, editing ? `&id=${editing.id}` : '')}
-			{busy}
+	{#if editing || showNew}
+		<div class="card">
+			<h2>{editing ? `Edit “${editing.name}”` : 'New preset'}</h2>
+			<PresetForm
+				{service}
+				{options}
+				preset={editing}
+				oncancel={() => {
+					editing = null;
+					showNew = false;
+				}}
+				onsave={(body: Record<string, unknown>) => send(editing ? 'PATCH' : 'POST', body, editing ? `&id=${editing.id}` : '')}
+				{busy}
+			/>
+		</div>
+	{:else}
+		<button class="secondary" onclick={() => (showNew = true)}>New preset</button>
+	{/if}
+
+	{#if deleting}
+		<ConfirmDialog
+			title={`Delete preset “${deleting.name}”?`}
+			body={deleting.is_default
+				? 'This is the default preset — the member Add button stops working until you pick a new default.'
+				: 'This preset is not the default, so the member Add button is unaffected.'}
+			requireText={deleting.name}
+			confirmLabel="Delete preset"
+			busy={busy}
+			onconfirm={() => {
+				const d = deleting;
+				deleting = null;
+				if (d) send('DELETE', undefined, `&id=${d.id}`, 'Preset deleted');
+			}}
+			oncancel={() => (deleting = null)}
 		/>
-	</div>
+	{/if}
 {/if}
 
 <style>

@@ -235,6 +235,7 @@ button.secondary:hover:not(:disabled) {
 }
 
 button.danger {
+	background: var(--card);
 	color: var(--destructive);
 	border-color: color-mix(in srgb, var(--destructive) 35%, transparent);
 }
@@ -351,13 +352,69 @@ a,
 }
 
 :focus-visible {
-	outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+	outline: 2px solid var(--primary);
 	outline-offset: 1px;
 	border-radius: var(--radius);
 }
 
 ::selection {
 	background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* ---- screen-reader only ---- */
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* ---- modal overlay (console dialogs + confirmations) ---- */
+
+.overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	background: color-mix(in srgb, var(--foreground) 40%, transparent);
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 10vh 1rem 2rem;
+	overflow-y: auto;
+}
+
+.overlay .dialog {
+	margin: 0;
+	width: 100%;
+	max-width: 500px;
+	border-color: var(--border-strong);
+	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+
+.overlay .dialog.wide {
+	max-width: 640px;
+}
+
+.dialog:focus {
+	outline: none;
+}
+
+/* ---- pager ---- */
+
+.pager {
+	display: flex;
+	gap: 1rem;
+	align-items: center;
+}
+
+.pager button {
+	margin-top: 0;
 }
 
 /* ---- responsive: top bar condenses ---- */

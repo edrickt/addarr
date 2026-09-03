@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+
 	type ServiceKind = 'radarr' | 'sonarr';
 
 	type FormState = {
@@ -32,6 +34,10 @@
 		loadLan();
 	});
 
+	$effect(() => {
+		if (welcome && saved.length > 0) checkPresets();
+	});
+
 	async function save(kind: ServiceKind) {
 		const form = kind === 'radarr' ? radarr : sonarr;
 		busy[kind] = true;
@@ -54,6 +60,64 @@
 		}
 	}
 	const kinds: ServiceKind[] = ['radarr', 'sonarr'];
+
+	// First-run handoff from /setup: guide the admin to connect an instance,
+	// then confirm the household is ready to go.
+	const welcome = page.url.searchParams.get('welcome') === '1';
+
+	// Step 2 of onboarding: the member Add button needs a default preset.
+	let hasDefaultPreset = $state<boolean | null>(null);
+
+	async function checkPresets() {
+		try {
+			const kinds: ServiceKind[] = saved.map((s) => s.type as ServiceKind);
+			const results = await Promise.all(
+				kinds.map((k) =>
+					fetch(`/api/presets?service=${k}`)
+						.then((r) => (r.ok ? r.json() : { presets: [] }))
+						.catch(() => ({ presets: [] }))
+				)
+			);
+			hasDefaultPreset = results.some((d) =>
+				((d.presets ?? []) as Array<{ is_default?: number }>).some((p) => p.is_default)
+			);
+		} catch {
+			hasDefaultPreset = null;
+		}
+	}
+
+	// Server restart — moved here from the topbar so a whole-household
+	// interruption sits behind a deliberate two-step confirmation.
+	let restartAsk = $state(false);
+	let restarting = $state(false);
+	let restartStatus = $state<string | null>(null);
+
+	async function restartApp() {
+		if (restarting) return;
+		restarting = true;
+		restartAsk = false;
+		try {
+			await fetch('/api/restart', { method: 'POST' });
+		} catch {
+			/* the server may drop the connection mid-restart — expected */
+		}
+		// Poll until the new process is answering, then reload.
+		const deadline = Date.now() + 30_000;
+		while (Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 1000));
+			try {
+				const res = await fetch('/', { cache: 'no-store' });
+				if (res.ok) {
+					location.reload();
+					return;
+				}
+			} catch {
+				/* still down, keep polling */
+			}
+		}
+		restartStatus = 'Addarr did not come back within 30 s — check the server console, then reload this page.';
+		restarting = false;
+	}
 
 	let lan = $state<{ enabled: boolean; broadcasting: boolean; boundLan: boolean; forced: boolean; managedExternally: boolean } | null>(null);
 	let lanBusy = $state(false);
@@ -93,12 +157,32 @@
 
 <h1>Settings</h1>
 
+{#if welcome}
+	<div class="card welcome">
+		{#if saved.length === 0}
+			<h2>Almost done</h2>
+			<p class="hint">Connect Radarr or Sonarr below. After that, one more step and your family is live.</p>
+		{:else if hasDefaultPreset === false}
+			<h2>One step left</h2>
+			<p class="hint">Create your first preset — it decides what the <strong>Add</strong> button does for your family.</p>
+			<a href="/presets"><button>Open Presets</button></a>
+		{:else}
+			<h2>You're set</h2>
+			<p class="hint">Hand your family <span class="mono">http://addarr.local:4545</span> (or your machine's IP — the address is printed in the server console). Searching and adding needs no account.</p>
+		{/if}
+	</div>
+{/if}
+
 {#each kinds as kind}
 	{@const form = kind === 'radarr' ? radarr : sonarr}
 	{@const s = statuses[kind]}
 	{@const b = busy[kind]}
+	{@const svc = saved.find((sv) => sv.type === kind)}
 	<div class="card">
 		<h2>{kind === 'radarr' ? 'Radarr' : 'Sonarr'}</h2>
+		{#if svc}
+			<p class="msg ok">Connected — {svc.base_url}{#if svc.app_version} · v{svc.app_version}{/if}</p>
+		{/if}
 		<label for={`${kind}-name`}>Name</label>
 		<input id={`${kind}-name`} bind:value={form.name} />
 		<label for={`${kind}-url`}>Base URL</label>
@@ -108,29 +192,15 @@
 			placeholder={`http://192.168.1.x:${kind === 'radarr' ? 7878 : 8989}`}
 		/>
 		<label for={`${kind}-key`}>API key</label>
-		<input id={`${kind}-key`} bind:value={form.apiKey} placeholder="X-Api-Key from Settings → General" />
+		<input id={`${kind}-key`} type="password" bind:value={form.apiKey} placeholder="X-Api-Key from Settings → General" autocomplete="off" />
 		<button onclick={() => save(kind)} disabled={b}>
 			{b ? 'Testing…' : 'Test & Save'}
 		</button>
 		{#if s}
-			<p class="msg {s.kind === 'ok' ? 'ok' : 'error'}">{s.text}</p>
+			<p class="msg {s.kind === 'ok' ? 'ok' : 'error'}" role={s.kind === 'error' ? 'alert' : undefined}>{s.text}</p>
 		{/if}
 	</div>
 {/each}
-
-{#if saved.length > 0}
-	<div class="card">
-		<h2>Configured</h2>
-		<ul>
-			{#each saved as s}
-				<li>
-					{s.name} ({s.type}) → {s.base_url}
-					{#if s.app_version}· v{s.app_version}{/if}
-				</li>
-			{/each}
-		</ul>
-	</div>
-{/if}
 
 <div class="card">
 	<h2>Network</h2>
@@ -157,8 +227,39 @@
 				Off — Addarr is reachable from this machine only.
 			{/if}
 		</p>
-		{#if lanStatus}<p class="msg {lanStatus.kind}">{lanStatus.text}</p>{/if}
+		{#if lanStatus}<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>{/if}
 	{:else}
 		<p class="hint">Loading…</p>
 	{/if}
 </div>
+
+<div class="card">
+	<h2>Server</h2>
+	{#if restarting}
+		<p class="hint">Restarting… this page reloads automatically when Addarr is back.</p>
+	{:else if restartStatus}
+		<p class="msg error" role="alert">{restartStatus}</p>
+		<button class="secondary" onclick={() => (restartStatus = null)}>Dismiss</button>
+	{:else if restartAsk}
+		<p class="hint">Restart Addarr? Everyone loses access for a few seconds.</p>
+		<button class="danger" onclick={restartApp}>Restart now</button>
+		<button class="secondary" onclick={() => (restartAsk = false)}>Cancel</button>
+	{:else}
+		<p class="hint">Applies settings marked “restart Addarr to make it reachable.”</p>
+		<button class="secondary" onclick={() => (restartAsk = true)}>Restart server…</button>
+	{/if}
+</div>
+
+<style>
+	.check {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		color: var(--foreground);
+		font-size: 0.95rem;
+	}
+	.check input {
+		width: auto;
+	}
+</style>

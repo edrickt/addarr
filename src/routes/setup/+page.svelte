@@ -21,7 +21,9 @@
 			});
 			const data = await res.json();
 			if (res.ok) {
-				location.assign('/');
+				// Route the admin into the connect-a-backend step, not the empty
+				// search page — the setup flow ends there, not here.
+				location.assign('/settings?welcome=1');
 			} else {
 				msg = { kind: 'error', text: data.error ?? 'Setup failed' };
 			}
@@ -45,14 +47,14 @@
 		<label for="setup-username">Admin username</label>
 		<input id="setup-username" bind:value={username} autocomplete="off" />
 		<label for="setup-pin">Admin PIN (4–6 digits)</label>
-		<input id="setup-pin" bind:value={pin} inputmode="numeric" autocomplete="off" />
+		<input id="setup-pin" type="password" bind:value={pin} inputmode="numeric" maxlength={6} autocomplete="off" />
 		<label for="setup-confirm">Repeat PIN</label>
-		<input id="setup-confirm" bind:value={confirm} inputmode="numeric" autocomplete="off" />
+		<input id="setup-confirm" type="password" bind:value={confirm} inputmode="numeric" maxlength={6} autocomplete="off" />
 		<button type="submit" disabled={busy || !username || !pin || !confirm}>
 			{busy ? 'Creating…' : 'Create admin account'}
 		</button>
 		{#if msg}
-			<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}">{msg.text}</p>
+			<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : undefined}>{msg.text}</p>
 		{/if}
 	</form>
 </div>
