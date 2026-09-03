@@ -1,5 +1,6 @@
 import { ArrClient } from './client.js';
 import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.js';
+import { movieStatus } from './status.js';
 
 /** Radarr API v3 adapter. Verified field names against Radarr source:
  *  MovieLookupController (GET /movie/lookup?term=), MovieController (POST /movie),
@@ -128,17 +129,24 @@ export class RadarrClient extends ArrClient {
 	}
 
 	async toPosterCards(lookupResults: RadarrMovie[]): Promise<PosterCard[]> {
-		const knownTmdbIds = new Set((await this.allMovies()).map((m) => m.tmdbId));
+		const [library, queue] = await Promise.all([this.allMovies(), this.queue()]);
+		const byTmdb = new Map(library.map((m) => [m.tmdbId, m]));
 		return lookupResults
 			.filter((m) => m.tmdbId)
-			.map((m) => ({
-				sourceId: m.tmdbId,
-				title: m.title,
-				year: m.year ?? null,
-				overview: m.overview ?? '',
-				posterUrl: posterUrl(m.images),
-				inLibrary: knownTmdbIds.has(m.tmdbId)
-			}));
+			.map((m) => {
+				const known = byTmdb.get(m.tmdbId);
+				const rows = known ? queue.filter((q) => q.movieId === known.id) : [];
+				return {
+					sourceId: m.tmdbId,
+					title: m.title,
+					year: m.year ?? null,
+					overview: m.overview ?? '',
+					posterUrl: posterUrl(m.images),
+					inLibrary: !!known,
+					id: known?.id,
+					status: known ? movieStatus(known, rows) : undefined
+				};
+			});
 	}
 
 	status(): Promise<ArrSystemStatus> {

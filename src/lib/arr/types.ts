@@ -18,6 +18,10 @@ export type PosterCard = {
 	posterUrl: string | null;
 	inLibrary: boolean;
 	seriesType?: string;
+	/** *arr item id — present for in-library items (used for status polling). */
+	id?: number;
+	/** Normalized acquisition state for in-library items. */
+	status?: import('./status.js').ArrItemStatus;
 };
 
 /** Admin-chosen defaults applied on add. Subset of the presets table. */

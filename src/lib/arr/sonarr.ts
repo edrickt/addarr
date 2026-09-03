@@ -1,5 +1,6 @@
 import { ArrClient } from './client.js';
 import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.js';
+import { seriesStatus } from './status.js';
 
 /** Sonarr API v3 adapter. Verified field names against Sonarr source:
  *  SeriesLookupController (GET /series/lookup?term=), SeriesController (POST /series),
@@ -153,18 +154,25 @@ export class SonarrClient extends ArrClient {
 	}
 
 	async toPosterCards(lookupResults: SonarrSeries[]): Promise<PosterCard[]> {
-		const knownTvdbIds = new Set((await this.allSeries()).map((s) => s.tvdbId));
+		const [library, queue] = await Promise.all([this.allSeries(), this.queue()]);
+		const byTvdb = new Map(library.map((s) => [s.tvdbId, s]));
 		return lookupResults
 			.filter((s) => s.tvdbId)
-			.map((s) => ({
-				sourceId: s.tvdbId,
-				title: s.title,
-				year: s.year ?? null,
-				overview: s.overview ?? '',
-				posterUrl: posterUrl(s.images),
-				inLibrary: knownTvdbIds.has(s.tvdbId),
-				seriesType: s.seriesType
-			}));
+			.map((s) => {
+				const known = byTvdb.get(s.tvdbId);
+				const rows = known ? queue.filter((q) => q.seriesId === known.id) : [];
+				return {
+					sourceId: s.tvdbId,
+					title: s.title,
+					year: s.year ?? null,
+					overview: s.overview ?? '',
+					posterUrl: posterUrl(s.images),
+					inLibrary: !!known,
+					id: known?.id,
+					status: known ? seriesStatus(known, rows) : undefined,
+					seriesType: s.seriesType
+				};
+			});
 	}
 
 	status(): Promise<ArrSystemStatus> {

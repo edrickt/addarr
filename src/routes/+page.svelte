@@ -1,15 +1,8 @@
 <script lang="ts">
 	import type { PosterCard } from '$lib/arr/types';
+import type { ArrItemState } from '$lib/arr/status';
 
-	type WatchState =
-		| 'waiting'
-		| 'queued'
-		| 'paused'
-		| 'downloading'
-		| 'importing'
-		| 'partial'
-		| 'attention'
-		| 'available';
+	type WatchState = ArrItemState;
 
 	type Result = PosterCard & {
 		kind: 'movie' | 'series';
@@ -58,7 +51,19 @@
 			let firstError: string | null = null;
 			settled.forEach((s, i) => {
 				if (s.status === 'fulfilled' && Array.isArray(s.value.results)) {
-					for (const card of s.value.results as PosterCard[]) merged.push({ ...card, kind: kinds[i] });
+					for (const card of s.value.results as PosterCard[]) {
+						// In-library items carry their real *arr state — wire them into
+						// the same watch fields so the poller keeps them live.
+						merged.push({
+							...card,
+							kind: kinds[i],
+							watchId: card.status ? card.id : undefined,
+							watchStatus: card.status?.state,
+							watchProgress: card.status?.progress ?? null,
+							watchTimeLeft: card.status?.timeLeftSeconds ?? null,
+							watchEpisodes: card.status?.episodes ?? null
+						});
+					}
 				} else if (!firstError) {
 					firstError =
 						s.status === 'fulfilled'
@@ -119,8 +124,11 @@
 		const tick = async () => {
 			if (cancelled) return;
 			const watching = results.filter(
-				(r) => r.watchId && r.watchStatus && r.watchStatus !== 'available'
-			);
+				(r) =>
+					r.watchId &&
+					r.watchStatus &&
+					!STATIC_STATES.has(r.watchStatus)
+				);
 			if (watching.length > 0) {
 				for (const card of watching) {
 					try {
@@ -159,17 +167,53 @@
 		downloading: 'Downloading…',
 		importing: 'Importing…',
 		partial: 'Episodes',
-		attention: 'Needs attention'
+		attention: 'Needs attention',
+		missing: 'Missing',
+		unreleased: 'Unreleased'
 	};
 
-	function watchText(card: Result): string {
-		const s = card.watchStatus!;
-		if (s === 'available') return 'In library';
+	// States that never change on their own — no point polling them.
+	const STATIC_STATES: ReadonlySet<WatchState> = new Set(['available', 'missing', 'unreleased']);
+
+	/** Short badge text shown on the poster. */
+	function badgeText(card: Result): string {
+		const s = card.watchStatus;
+		if (!s || s === 'available') return 'In library';
+		if (s === 'partial' && card.watchEpisodes) {
+			return `${card.watchEpisodes.have}/${card.watchEpisodes.total} eps`;
+		}
+		return WATCH_LABEL[s].replace(/…$/, '');
+	}
+
+	function badgeTone(card: Result): 'ok' | 'active' | 'warn' | 'muted' {
+		switch (card.watchStatus) {
+			case 'downloading':
+			case 'queued':
+			case 'importing':
+				return 'active';
+			case 'attention':
+			case 'paused':
+				return 'warn';
+			case 'partial':
+			case 'missing':
+			case 'unreleased':
+			case 'waiting':
+				return 'muted';
+			default:
+				return 'ok'; // available
+		}
+	}
+
+	/** Detail line under the poster — only when it adds info beyond the badge. */
+	function watchDetail(card: Result): string | null {
+		const s = card.watchStatus;
+		if (!s || s === 'available' || s === 'missing' || s === 'unreleased') return null;
 		if (s === 'downloading' && card.watchTimeLeft != null) return `${fmtLeft(card.watchTimeLeft)} left`;
 		if (s === 'partial' && card.watchEpisodes) {
 			return `${card.watchEpisodes.have} of ${card.watchEpisodes.total} episodes`;
 		}
-		return WATCH_LABEL[s];
+		if (s === 'waiting' || (s === 'downloading' && card.watchTimeLeft == null)) return WATCH_LABEL[s];
+		return null; // queued/paused/importing/attention — the badge already says it
 	}
 
 	function fmtLeft(seconds: number): string {
@@ -262,7 +306,16 @@
 						onerror={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
 					/>
 				{/if}
-				{#if card.inLibrary}
+				{#if card.watchStatus}
+					<span
+						class="badge"
+						class:active={badgeTone(card) === 'active'}
+						class:warn={badgeTone(card) === 'warn'}
+						class:muted={badgeTone(card) === 'muted'}
+					>
+						{badgeText(card)}
+					</span>
+				{:else if card.inLibrary}
 					<span class="badge">In library</span>
 				{/if}
 				{#if card.watchStatus && card.watchStatus !== 'available'}
@@ -279,20 +332,10 @@
 						</div>
 					{/if}
 				{/if}
-				{#if card.watchStatus}
-					<span class="watch" class:done={card.watchStatus === 'available'}>
-						{#if card.watchStatus !== 'available'}
-							<span
-								class="dot"
-								class:warn={card.watchStatus === 'attention' || card.watchStatus === 'paused'}
-								class:active={
-									card.watchStatus === 'downloading' ||
-									card.watchStatus === 'queued' ||
-									card.watchStatus === 'importing'
-								}
-							></span>
-						{/if}
-						{watchText(card)}
+				{#if watchDetail(card)}
+					<span class="watch">
+						<span class="dot" class:warn={card.watchStatus === 'attention' || card.watchStatus === 'paused'}></span>
+						{watchDetail(card)}
 					</span>
 				{/if}
 			</div>
@@ -398,17 +441,23 @@
 		padding: 0.15rem 0.5rem;
 		border-radius: var(--radius);
 	}
+	.badge.active {
+		background: var(--primary);
+	}
+	.badge.warn {
+		background: var(--warning);
+	}
+	.badge.muted {
+		background: var(--muted-foreground);
+	}
 	.watch {
 		display: block;
 		font-size: 0.75rem;
 		color: var(--muted-foreground);
 		min-height: 1rem;
 	}
-	.watch:has(.dot.active) {
+	.watch:has(.dot.warn) {
 		color: var(--foreground);
-	}
-	.watch.done {
-		color: var(--success);
 	}
 	.progress {
 		position: absolute;
