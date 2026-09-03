@@ -188,5 +188,16 @@
 	}
 	.check input {
 		width: auto;
+		accent-color: var(--primary);
+	}
+	/* 44px hit area on touch: enlarge the box and give the label breathing room */
+	@media (pointer: coarse) {
+		.check {
+			min-height: 2.75rem;
+		}
+		.check input {
+			width: 1.2rem;
+			height: 1.2rem;
+		}
 	}
 </style>

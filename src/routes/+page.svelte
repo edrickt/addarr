@@ -319,6 +319,8 @@ import type { ArrItemState } from '$lib/arr/status';
 <div class="search-bar">
 	<input
 		class="search-input"
+		type="search"
+		enterkeyhint="search"
 		bind:value={q}
 		placeholder="Search for a movie or series…"
 		aria-label="Search for a movie or series"
@@ -357,7 +359,7 @@ import type { ArrItemState } from '$lib/arr/status';
 	<p class="hint empty-invite">Type a movie or series name above — one tap and it's on its way to your library.</p>
 {/if}
 
-<div class="sr-only" aria-live="assertive">{announce}</div>
+<div class="sr-only" aria-live="polite">{announce}</div>
 
 <div class="grid">
 	{#each results as card (card.kind + card.sourceId)}
@@ -494,6 +496,13 @@ import type { ArrItemState } from '$lib/arr/status';
 		border-color: var(--border-strong);
 		transform: translateY(-2px);
 	}
+	/* Hover lift only where hover exists — touch devices otherwise stick
+	   in the lifted state after a tap. */
+	@media (hover: none) {
+		.poster-card:hover .poster-wrap {
+			transform: none;
+		}
+	}
 	.poster-wrap {
 		transition:
 			border-color 150ms ease,
@@ -544,14 +553,29 @@ import type { ArrItemState } from '$lib/arr/status';
 	.badge.muted {
 		background: color-mix(in srgb, var(--muted-foreground) 80%, var(--foreground));
 	}
+	/* Detail line pinned inside the poster's bottom edge. The poster image
+	   is absolutely positioned over the whole wrap, so this must be
+	   positioned too — in flow it sits under (and clipped by) the image. */
 	.watch {
-		display: block;
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
 		font-size: 0.75rem;
-		color: var(--muted-foreground);
-		min-height: 1rem;
+		font-weight: 450;
+		color: var(--primary-foreground);
+		background: color-mix(in srgb, var(--foreground) 82%, transparent);
+		padding: 0.3rem 0.55rem 0.45rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-	.watch:has(.dot.warn) {
-		color: var(--foreground);
+	.watch .dot {
+		background: var(--primary-foreground);
+		margin-right: 0.35rem;
+	}
+	.watch .dot.warn {
+		background: color-mix(in srgb, var(--warning) 55%, var(--primary-foreground));
 	}
 	.progress {
 		position: absolute;
@@ -559,6 +583,8 @@ import type { ArrItemState } from '$lib/arr/status';
 		right: 0;
 		bottom: 0;
 		height: 3px;
+		/* Paint above the watch strip sharing the bottom edge */
+		z-index: 1;
 		background: color-mix(in srgb, var(--border) 75%, transparent);
 	}
 	.progress-fill {
@@ -590,6 +616,9 @@ import type { ArrItemState } from '$lib/arr/status';
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
+		.progress-fill {
+			transition: none;
+		}
 		.progress-fill.indeterminate {
 			animation: none;
 		}

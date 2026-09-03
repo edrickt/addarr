@@ -6,7 +6,7 @@
 	/* semantic tokens */
 	--background: #fafafa;
 	--foreground: #171717;
-	--muted-foreground: #71717a;
+	--muted-foreground: #66666e;
 	--card: #ffffff;
 	--elevated: #f4f4f5;
 	--border: #e4e4e7;
@@ -459,6 +459,12 @@ a,
 		min-height: 2.75rem;
 	}
 	.topnav a {
-		padding: 0.55rem 0.75rem;
+		padding: 0.7rem 0.85rem;
+	}
+	.brand {
+		padding: 0.7rem 0.5rem;
+	}
+	.topbar-actions .signin {
+		padding: 0.65rem 0.8rem;
 	}
 }

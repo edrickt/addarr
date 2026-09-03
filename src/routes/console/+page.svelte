@@ -712,6 +712,17 @@
 	}
 	.check input {
 		width: auto;
+		accent-color: var(--primary);
+	}
+	/* 44px hit area on touch: enlarge the box and give the label breathing room */
+	@media (pointer: coarse) {
+		.check {
+			min-height: 2.75rem;
+		}
+		.check input {
+			width: 1.2rem;
+			height: 1.2rem;
+		}
 	}
 	/* Rows keep their two-part shape down to phone width, then the action
 	   cluster drops below the title instead of crushing it. */
