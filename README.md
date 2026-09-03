@@ -80,6 +80,16 @@ ADDARR_DB=/path/to/addarr.db npm start   # custom data file location
 npm run dev                        # development mode with hot reload
 ```
 
+### Sharing on your LAN (broadcasting)
+
+By default Addarr binds to `localhost` only — nothing else on the network can reach it. To open it up to your LAN **and** broadcast it over mDNS/Bonjour (so it shows up as "Addarr" in network discovery, e.g. Safari's Bonjour list or an Avahi browser), enable LAN mode:
+
+```sh
+npm start -- --lan                 # Windows PowerShell: $env:ADDARR_LAN=1; npm start
+```
+
+The startup log prints the LAN URL to hand out (e.g. `http://192.168.1.23:3000`). You can also set `HOST` explicitly (`HOST=192.168.1.23`) to bind a single interface. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs — discovery just won't work.
+
 Data (users, sessions, connections, presets, activity log) lives in one SQLite file, `data/addarr.db` by default. Back that file up and you've backed up the whole app.
 
 ## First run
@@ -93,7 +103,7 @@ Members sign in with their name and PIN; admins get 12-hour sessions, members 30
 
 ## LAN only
 
-Addarr is designed for trusted networks. Bind it to your LAN and use Tailscale/WireGuard for remote access — there is no HTTPS hardening built in, by design.
+Addarr is designed for trusted networks. LAN access is opt-in (see **Sharing on your LAN** above) — use Tailscale/WireGuard for remote access; there is no HTTPS hardening built in, by design.
 
 ## API surface (internal)
 
