@@ -2,7 +2,7 @@
 
 A small self-hosted web app for the home LAN. Non-technical household members search for movies and series and add them to Radarr/Sonarr in one tap. An admin mode configures exactly what "add" does and provides deep, curated control over the *arr instances.
 
-Status: **v1 complete — M1–M5 implemented and smoke-tested.** v1.1: anonymous member access, admin-only login; visual restyle to light "Precision" theme. Visual style: "Precision" theme, light colorway — near-white semantic-token palette, sidebar app shell, Inter (self-hosted), sharp corners, light font weights, hairline structure, mono numerals, console KPI strip, no emojis. Architecture validated by a 3-advisor council (see session memo); API facts verified against Radarr/Sonarr source and v3 swagger docs.
+Status: **v1.2 complete — M1–M6 implemented and smoke-tested.** v1.1: anonymous member access, admin-only login; visual restyle to light "Precision" theme. v1.2: real acquisition states on poster cards (server-normalized status API: queued/downloading/importing/partial/paused/attention/missing/unreleased, poster progress bar, adaptive polling), admin-only server restart with graceful self-restart and port takeover, LAN sharing toggle in Settings, first-run onboarding handoff (setup → connect → default preset), full mobile adaptation (safe areas, 44px touch targets, no iOS focus zoom), and a technical audit + hardening pass (login attempt backoff, no silent fetch failures, watch-detail strip fix). Visual style: "Precision" theme, light colorway — near-white semantic-token palette, top-bar app shell, Inter (self-hosted), sharp corners, light font weights, hairline structure, mono numerals, console KPI strip, no emojis. Architecture validated by a 3-advisor council (see session memo); API facts verified against Radarr/Sonarr source and v3 swagger docs.
 
 ---
 
@@ -101,7 +101,7 @@ activity_log   (id, user_id, service_id, action, arr_item_id, title,
 
 ## 5. Member experience
 
-**Flow:** search box → debounced lookup → poster grid (title, year, poster, "in library ✓" badge) → detail card → **one Add button** (uses default preset) → confirmation toast → done.
+**Flow:** search box → debounced lookup → poster grid (title, year, poster, status badge) → **one Add button on the card** (uses default preset) → confirmation toast → done. Cards already in the library show a live acquisition state instead of an Add button: `waiting → queued → downloading → importing → available`, plus `partial` (some episodes on disk), `paused`, `attention` (admin-visible problem states render as a neutral "Waiting" for members), `missing`, `unreleased` — with a progress bar and a time-left detail strip while downloading. A grid-wide self-scheduling poller refreshes badges every 5 s while anything is downloading, 20 s otherwise.
 
 Internal routes (all member-facing, all server-side):
 
@@ -115,7 +115,7 @@ Member rules:
 - Lookup results are trimmed to poster card fields (no arr internals leak).
 - Sonarr lookup returns unreliable monitoring defaults for new series — server resets them; the preset decides (researcher: sonarr issue #5761).
 - Search trigger: rely **only** on `addOptions.searchForMovie` / `searchForMissingEpisodes`. Never also fire a `MoviesSearch`/`SeriesSearch` command for the same add (duplicate-search footgun).
-- Status after add (decision D4 — default: **show it**): simple polled badge `queued → downloading → available` from `GET /api/v3/queue` + item state. No websockets in v1.
+- Status after add (decision D4 — default: **show it**): polled badge with the full acquisition state machine (§5) from `GET /api/v3/queue` + item state. No websockets in v1.
 
 ---
 
@@ -124,8 +124,9 @@ Member rules:
 ### 6.1 Settings screens (curated, full write access)
 - **Connections:** add/test Radarr & Sonarr instances (URL + API key, capability probe, version display).
 - **Presets:** CRUD per service; live dropdowns populated from `GET /api/v3/qualityprofile`, `/rootfolder`, `/tag`; toggles for monitored, search-on-add; Sonarr: series-type and season-monitor policy.
-- **Users:** create/disable members, reset PINs.
 - **Activity log:** who added what, when.
+- **Network:** LAN sharing toggle (bind + mDNS/Bonjour broadcast), with restart guidance.
+- **Server:** admin-only graceful restart (self-restart with port takeover).
 
 ### 6.2 Operations console (curated, full write access, confirm-gated)
 The ~15 endpoints admins actually touch, hand-built:
@@ -170,6 +171,9 @@ Library edit/delete (confirm-gated), queue, history, commands buttons, exclusion
 
 ### M5 — Read-only passthrough + polish ✅
 `/arrapi` GET proxy with allow-list, error surfaces friendly to non-admins, one-line launch, README. *Done when:* v1 is taggable.
+
+### M6 — Acquisition states, mobile, hardening ✅ (v1.2)
+Server-normalized status API and real states on poster cards (badges, progress bar, time-left strip, adaptive polling); admin-only restart with self-restart + port takeover; LAN sharing toggle; setup→settings onboarding handoff; mobile pass (safe areas, 44px targets, iOS zoom fix); technical audit + hardening (login backoff, error states on every fetch path, watch-detail strip fix). *Done when:* an anonymous member can watch an add go from queued to available on a phone, unsupervised.
 
 ---
 

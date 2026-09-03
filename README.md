@@ -6,7 +6,7 @@ The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side (
 
 ## Features
 
-- **Member mode** — search box → poster grid → one **Add** button. "In library ✓" badge, live `queued → downloading → available` status after adding.
+- **Member mode** — search box → poster grid → one **Add** button, no account needed. "In library ✓" badge, live acquisition status after adding: `queued → downloading → importing → available`, plus paused/partial states, with a progress bar and time-left on the poster.
 - **Admin presets** — define what Add does per service: quality profile, root folder, monitored, tags, minimum availability, search-on-add, and (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
 - **Operations console** — curated screens for day-to-day acquisition: library edit/delete (typed confirmation), queue, history, import exclusions, blocklist, calendar, and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`). No free-form commands.
 - **Read-only passthrough** — `GET /arrapi/:service/<allow-listed path>` to inspect any payload the curated UI doesn't show. Write verbs are structurally blocked.
@@ -76,7 +76,7 @@ First run takes a minute; subsequent runs are faster. Updating later is the same
 
 On Windows, allow Node.js through the Windows Defender firewall prompt if it appears (check both **Private** and **Public** networks if you'll serve over LAN).
 
-### 3. Open the app
+### 4. Open the app
 
 Browse to `http://localhost:4545`. Other devices on your LAN use `http://<your-machine-ip>:4545` (find the IP with `ipconfig` on Windows, `ipconfig getifaddr en0` on macOS, or `ip addr` on Linux).
 
@@ -105,10 +105,7 @@ Data (users, sessions, connections, presets, activity log) lives in one SQLite f
 
 1. Open `http://<host>:4545` → you're redirected to **Setup**: create the admin account (username + 4–6 digit PIN).
 2. **Settings** → connect Radarr and Sonarr (URL + API key). A capability probe verifies the version before saving, and a usable default preset is created automatically from the instance's first quality profile / root folder.
-3. **Members** → add household members (username + PIN).
-4. Hand them the URL. That's it.
-
-Members sign in with their name and PIN; admins get 12-hour sessions, members 30-day rolling sessions.
+3. Hand the household the URL — that's it. **Members need no account**: they search and add anonymously. Only signing into Settings/Console asks for the admin PIN (12-hour sessions, with a failed-attempt backoff against PIN guessing).
 
 ## LAN only
 
@@ -120,10 +117,10 @@ Addarr is designed for trusted networks. LAN access is opt-in (see **Sharing on 
 |---|---|---|
 | `GET /api/search?service=movie\|series&q=` | member | trimmed poster-card lookup + in-library flag |
 | `POST /api/add` | member | add via default preset, dedupe-checked, logged |
-| `GET /api/status/:kind/:id` | member | polled badge: waiting/queued/downloading/available |
+| `GET /api/status/:kind/:id` | member | polled badge: queued/downloading/importing/partial/paused/attention/missing/unreleased/available |
 | `/api/presets` | admin | preset CRUD + live dropdown options |
 | `/api/console/*` | admin | library, queue, history, exclusions, blocklist, calendar, curated commands |
-| `/api/services`, `/api/users`, `/api/activity` | admin | connections, members, activity log |
+| `/api/services`, `/api/activity` | admin | connections, activity log |
 | `GET /arrapi/:service/*` | admin | allow-listed read-only passthrough |
 
 See `PLAN.md` for the full architecture and milestone history.
