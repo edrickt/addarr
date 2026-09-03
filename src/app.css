@@ -440,5 +440,25 @@ a,
 	}
 	.content {
 		padding: 1.25rem;
+		padding-left: max(1.25rem, env(safe-area-inset-left));
+		padding-right: max(1.25rem, env(safe-area-inset-right));
+		padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+	}
+}
+
+/* ---- touch adaptation: coarse pointers get 44px targets and no focus zoom ---- */
+
+@media (pointer: coarse) {
+	input,
+	select {
+		/* 16px floor — iOS Safari zooms the page when a smaller input is focused */
+		font-size: 1rem;
+	}
+	button {
+		/* 44px minimum touch target for every control on touch-primary devices */
+		min-height: 2.75rem;
+	}
+	.topnav a {
+		padding: 0.55rem 0.75rem;
 	}
 }

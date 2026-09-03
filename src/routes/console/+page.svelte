@@ -713,4 +713,15 @@
 	.check input {
 		width: auto;
 	}
+	/* Rows keep their two-part shape down to phone width, then the action
+	   cluster drops below the title instead of crushing it. */
+	@media (max-width: 640px) {
+		.rows li {
+			flex-wrap: wrap;
+		}
+		.rows li .actions {
+			width: 100%;
+			justify-content: flex-end;
+		}
+	}
 </style>

@@ -108,6 +108,9 @@
 	.rows li:last-child {
 		border-bottom: none;
 	}
+	.grow {
+		min-width: 0;
+	}
 	.grow small {
 		display: block;
 		color: var(--muted-foreground);
@@ -117,5 +120,13 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--muted-foreground);
 		white-space: nowrap;
+	}
+	@media (max-width: 640px) {
+		.rows li {
+			flex-wrap: wrap;
+		}
+		.when {
+			margin-left: auto;
+		}
 	}
 </style>

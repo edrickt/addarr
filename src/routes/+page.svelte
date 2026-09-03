@@ -474,6 +474,9 @@ import type { ArrItemState } from '$lib/arr/status';
 		display: flex;
 		flex-wrap: wrap;
 		gap: 1rem;
+		/* Center partial rows — on phones a 2-card row leaves stray space
+	   that otherwise piles up on the right. */
+		justify-content: center;
 	}
 	.poster-card {
 		width: 150px;
@@ -656,6 +659,9 @@ import type { ArrItemState } from '$lib/arr/status';
 		bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
+		max-width: min(calc(100vw - 2rem), 34rem);
+		box-sizing: border-box;
+		text-align: center;
 		background: var(--success);
 		color: var(--primary-foreground);
 		font-weight: 450;
