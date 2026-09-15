@@ -139,14 +139,9 @@ function plistValue(value) {
 	return `\t<string>${xmlEscape(value)}</string>`;
 }
 
-/** Environment baked into the service, so restarts and logins behave the same. */
-function serviceEnv() {
-	const pathEntries = [dirname(NODE), ...(process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin').split(IS_WIN ? ';' : ':')];
-	const env = {
-		PATH: [...new Set(pathEntries.filter(Boolean))].join(IS_WIN ? ';' : ':'),
-		ADDARR_MANAGED: IS_MAC ? 'launchd' : IS_LINUX ? 'systemd' : '1',
-		PORT: String(port)
-	};
+/** User-facing overrides baked into the launcher, on every platform. */
+function overrideEnv() {
+	const env = { PORT: String(port) };
 	if (args.includes('--lan')) env.ADDARR_LAN = '1';
 	for (const key of ['HOST', 'ADDARR_LAN', 'ADDARR_DB']) {
 		const value = process.env[key];
@@ -154,6 +149,19 @@ function serviceEnv() {
 		env[key] = key === 'ADDARR_DB' && !isAbsolute(value) ? resolve(process.cwd(), value) : value;
 	}
 	return env;
+}
+
+/** Environment baked into the service, so restarts and logins behave the same. */
+function serviceEnv() {
+	const pathEntries = [
+		dirname(NODE),
+		...(process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin').split(IS_WIN ? ';' : ':')
+	];
+	return {
+		PATH: [...new Set(pathEntries.filter(Boolean))].join(IS_WIN ? ';' : ':'),
+		ADDARR_MANAGED: IS_MAC ? 'launchd' : IS_LINUX ? 'systemd' : '1',
+		...overrideEnv()
+	};
 }
 
 function ensureDataDir() {
@@ -187,14 +195,16 @@ const stripEmpty = (value) => (value ? value : '');
 
 const MAC_PLIST = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 const MAC_APP = join(homedir(), 'Applications', 'Addarr.app');
-const macDomain = `gui/${process.getuid()}`;
+// process.getuid() does not exist on Windows, so keep this lazy: this module
+// is imported on every platform.
+const macDomain = () => `gui/${process.getuid()}`;
 
 /** Bootout returns before launchd has finished tearing the job down. */
 function macUnload(timeoutMs = 5000) {
-	run('launchctl', ['bootout', `${macDomain}/${LABEL}`]);
+	run('launchctl', ['bootout', `${macDomain()}/${LABEL}`]);
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		if (captured('launchctl', ['print', `${macDomain}/${LABEL}`]) === '') return true;
+		if (captured('launchctl', ['print', `${macDomain()}/${LABEL}`]) === '') return true;
 		run('sleep', ['0.1']);
 	}
 	return false;
@@ -259,7 +269,7 @@ ${plistDict({
 	const launcher = `#!/bin/sh
 # Addarr — starts the background service if needed, then opens the app.
 LABEL="${LABEL}"
-DOMAIN="${macDomain}"
+DOMAIN="${macDomain()}"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 URL="${url}"
 NODE="${NODE}"
@@ -303,7 +313,7 @@ fi
 const mac = {
 	name: 'launchd LaunchAgent',
 	install() {
-		const loaded = captured('launchctl', ['print', `${macDomain}/${LABEL}`]) !== '';
+		const loaded = captured('launchctl', ['print', `${macDomain()}/${LABEL}`]) !== '';
 		macWritePlist();
 		macWriteApp();
 		// Unload a running job so the next start re-reads the plist; launchd only
@@ -311,7 +321,7 @@ const mac = {
 		if (loaded) macUnload();
 	},
 	running() {
-		const out = captured('launchctl', ['print', `${macDomain}/${LABEL}`]);
+		const out = captured('launchctl', ['print', `${macDomain()}/${LABEL}`]);
 		const match = out.match(/state = running[\s\S]*?pid = (\d+)/);
 		return match ? Number(match[1]) : null;
 	},
@@ -466,11 +476,17 @@ function winWriteLauncher() {
 
 	// Hidden launcher (no console window) used by both Startup and the shortcut.
 	// ADDARR_MANAGED stays unset: with no supervisor, the server hands over to a
-	// fresh detached copy of itself on restart, and logs to data/addarr.log.
+	// fresh detached copy of itself on restart. ADDARR_LOG makes it write to
+	// data/addarr.log even though the hidden window may still look like a TTY.
+	// CurrentDirectory matters: the server resolves data/addarr.db from the cwd.
+	const vbsEnv = Object.entries({ ...overrideEnv(), ADDARR_LOG: '1' })
+		.map(([key, value]) => `sh.Environment("PROCESS")("${key}") = "${value}"`)
+		.join('\n');
 	writeFileSync(
 		WIN_VBS,
 		`Set sh = CreateObject("WScript.Shell")
-sh.Environment("PROCESS")("PORT") = "${port}"
+sh.CurrentDirectory = "${ROOT}"
+${vbsEnv}
 sh.Run """${NODE}"" ""${join(ROOT, 'scripts', 'serve.mjs')}""", 0, False
 `
 	);
@@ -521,14 +537,14 @@ const platform = IS_MAC ? mac : IS_LINUX ? linux : IS_WIN ? windows : null;
 
 function startService() {
 	if (IS_MAC) {
-		const loaded = captured('launchctl', ['print', `${macDomain}/${LABEL}`]) !== '';
+		const loaded = captured('launchctl', ['print', `${macDomain()}/${LABEL}`]) !== '';
 		if (!loaded) {
-			const boot = run('launchctl', ['bootstrap', macDomain, MAC_PLIST]);
+			const boot = run('launchctl', ['bootstrap', macDomain(), MAC_PLIST]);
 			if (boot.status !== 0) {
 				throw new Error(`launchctl bootstrap failed: ${stripEmpty(boot.stderr) || 'unknown error'}`);
 			}
 		}
-		const kick = run('launchctl', ['kickstart', '-k', `${macDomain}/${LABEL}`]);
+		const kick = run('launchctl', ['kickstart', '-k', `${macDomain()}/${LABEL}`]);
 		if (kick.status !== 0) {
 			throw new Error(`launchctl kickstart failed: ${stripEmpty(kick.stderr) || 'unknown error'}`);
 		}

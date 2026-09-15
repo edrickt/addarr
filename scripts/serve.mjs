@@ -23,7 +23,9 @@ const supervisor = process.env.ADDARR_MANAGED ?? '';
 
 // Launched hidden from the Windows Startup folder there is no console, so
 // mirror output into data/addarr.log — `npm run logs` reads it on any platform.
-if (process.platform === 'win32' && !process.stdout.isTTY) {
+// The hidden window can still report itself as a TTY, so ADDARR_LOG (set by the
+// launcher) is the reliable signal.
+if (process.platform === 'win32' && (process.env.ADDARR_LOG === '1' || !process.stdout.isTTY)) {
 	const logFile = join(process.cwd(), 'data', 'addarr.log');
 	try {
 		mkdirSync(join(process.cwd(), 'data'), { recursive: true });
@@ -35,7 +37,11 @@ if (process.platform === 'win32' && !process.stdout.isTTY) {
 				} catch {
 					/* logging must never take the server down */
 				}
-				original(...parts);
+				try {
+					original(...parts);
+				} catch {
+					/* hidden process may have no usable stdout */
+				}
 			};
 		}
 	} catch {
