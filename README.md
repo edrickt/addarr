@@ -80,9 +80,9 @@ First run takes a minute; subsequent runs are faster. Updating later is the same
 |---|---|---|
 | macOS | **Addarr** app | `~/Applications` — Launchpad, Spotlight, Dock |
 | Linux | **Addarr** app | applications menu (`~/.local/share/applications`) |
-| Windows | **Addarr** shortcut | Start menu, plus a hidden launcher in Startup |
+| Windows | **Addarr** shortcut + tray icon | Start menu, plus a notification-area icon while it runs |
 
-Click the **Addarr** icon to start the server if it isn't running and open it in your browser. That is the everyday way in; the terminal is only needed for installing and updating.
+Click the **Addarr** icon to start the server if it isn't running and open it in your browser. That is the everyday way in; the terminal is only needed for installing and updating. On Windows the running server also gets an **Addarr icon in the notification area** (bottom-right, behind the `^` chevron on Windows 11 — drag it out to keep it visible): double-click to open, right-click for restart, stop, log, and quit.
 
 On Windows, allow Node.js through the Windows Defender firewall prompt if it appears (check both **Private** and **Public** networks if you'll serve over LAN).
 

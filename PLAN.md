@@ -176,7 +176,7 @@ Library edit/delete (confirm-gated), queue, history, commands buttons, exclusion
 Server-normalized status API and real states on poster cards (badges, progress bar, time-left strip, adaptive polling); admin-only restart with self-restart + port takeover; LAN sharing toggle; setup→settings onboarding handoff; mobile pass (safe areas, 44px targets, iOS zoom fix); technical audit + hardening (login backoff, error states on every fetch path, watch-detail strip fix). *Done when:* an anonymous member can watch an add go from queued to available on a phone, unsupervised.
 
 ### M7: Background service + desktop icon ✅ (v1.3)
-`npm start` installs and starts a per-user service (macOS launchd LaunchAgent, Linux systemd user unit, Windows Startup launcher) with an app icon (macOS `~/Applications/Addarr.app`, XDG desktop entry, Start Menu shortcut); `npm run stop|restart|status|logs|uninstall` manage it; in-app restart defers to the supervisor (launchd `kickstart -k`, systemd `Restart=always`) instead of spawning a competing process; PID file for status/stop. *Done when:* the terminal can be closed and clicking the app icon opens a running Addarr.
+`npm start` installs and starts a per-user service (macOS launchd LaunchAgent, Linux systemd user unit, Windows Startup launcher + notification-area tray icon) with an app icon (macOS `~/Applications/Addarr.app`, XDG desktop entry, Start menu shortcut); `npm run stop|restart|status|logs|uninstall` manage it; in-app restart defers to the supervisor (launchd `kickstart -k`, systemd `Restart=always`) instead of spawning a competing process; PID file for status/stop. *Done when:* the terminal can be closed and clicking the app icon opens a running Addarr.
 
 ---
 

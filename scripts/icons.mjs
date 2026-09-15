@@ -243,6 +243,11 @@ export function ensureIcons() {
 	const pngPath = join(ICON_DIR, 'addarr-256.png');
 	writeFileSync(pngPath, pngFor(256, 0.03));
 
+	// Small PNG for the Windows tray: System.Drawing.Icon cannot be trusted with
+	// PNG-compressed .ico entries, so the tray builds an HICON from this instead.
+	const png32Path = join(ICON_DIR, 'addarr-32.png');
+	writeFileSync(png32Path, pngFor(32, 0.03));
+
 	let icnsPath = null;
 	if (process.platform === 'darwin' && hasCommand('iconutil')) {
 		const target = join(ICON_DIR, 'AppIcon.icns');
@@ -261,7 +266,7 @@ export function ensureIcons() {
 		/* icon is cosmetic; never block install */
 	}
 
-	return { dir: ICON_DIR, png: pngFor, pngPath, icoPath, icnsPath };
+	return { dir: ICON_DIR, png: pngFor, pngPath, png32Path, icoPath, icnsPath };
 }
 
 function hasCommand(name) {
