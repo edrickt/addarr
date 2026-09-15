@@ -119,11 +119,11 @@
 				/* still down, keep polling */
 			}
 		}
-		restartStatus = 'Addarr did not come back within 30 s — check the server console, then reload this page.';
+		restartStatus = 'Addarr did not come back within 30 s — check the log (npm run logs), then reload this page.';
 		restarting = false;
 	}
 
-	let lan = $state<{ enabled: boolean; broadcasting: boolean; boundLan: boolean; forced: boolean; managedExternally: boolean } | null>(null);
+	let lan = $state<{ enabled: boolean; broadcasting: boolean; boundLan: boolean; forced: boolean; managedExternally: boolean; host: string | null; port: number | null; addresses: string[] } | null>(null);
 	let lanBusy = $state(false);
 	let lanStatus: Status = $state(null);
 
@@ -225,7 +225,7 @@
 		</label>
 		<p class="hint">
 			{#if lan.forced}
-				Forced on via the --lan flag or ADDARR_LAN=1 for this session.
+				Forced on via --lan / ADDARR_LAN=1 in the command that started Addarr.
 			{:else if lan.broadcasting}
 				On — other devices can reach Addarr and see it in network discovery.
 			{:else if lan.enabled && !lan.boundLan}
@@ -235,7 +235,11 @@
 			{:else}
 				Off — Addarr is reachable from this machine only.
 			{/if}
+			{#if lan.addresses?.length}
+				<br />Reachable at {#each lan.addresses as addr, i}{i > 0 ? ', ' : ''}<span class="mono">http://{addr}:{lan.port ?? 4545}</span>{/each}{#if lan.host && lan.host !== '0.0.0.0'} (bound to <span class="mono">{lan.host}</span> via HOST){/if}
+			{/if}
 		</p>
+		<p class="hint">To keep Addarr off the Tailnet, bind one interface: <span class="mono">HOST=192.168.1.x npm start</span> (your LAN IP).</p>
 		{#if lanStatus}<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>{/if}
 	{:else if lanStatus}
 		<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>

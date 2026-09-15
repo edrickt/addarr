@@ -7,13 +7,41 @@
 //
 // CLI/env overrides (force LAN regardless of the DB setting):
 //   --lan flag or ADDARR_LAN=1
-//   HOST=<addr> binds a specific interface
+//   HOST=<addr> binds a specific interface (e.g. HOST=192.168.1.10 keeps
+//   Addarr on the LAN only, off Tailscale/VPN interfaces)
 import { createServer } from 'node:http';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { handler } from '../build/handler.js';
+
+// Set by scripts/service.mjs when a supervisor owns this process:
+// "launchd" (macOS), "systemd" (Linux), unset when standalone.
+const supervisor = process.env.ADDARR_MANAGED ?? '';
+
+// Launched hidden from the Windows Startup folder there is no console, so
+// mirror output into data/addarr.log — `npm run logs` reads it on any platform.
+if (process.platform === 'win32' && !process.stdout.isTTY) {
+	const logFile = join(process.cwd(), 'data', 'addarr.log');
+	try {
+		mkdirSync(join(process.cwd(), 'data'), { recursive: true });
+		for (const level of ['log', 'warn', 'error']) {
+			const original = console[level].bind(console);
+			console[level] = (...parts) => {
+				try {
+					appendFileSync(logFile, `${parts.join(' ')}\n`);
+				} catch {
+					/* logging must never take the server down */
+				}
+				original(...parts);
+			};
+		}
+	} catch {
+		/* not fatal */
+	}
+}
 
 const forcedLan = process.argv.includes('--lan') || process.env.ADDARR_LAN === '1';
 const port = Number(process.env.PORT) || 4545;
@@ -37,13 +65,34 @@ const lanSetting = readLanSetting();
 const lanEnabled = forcedLan || lanSetting;
 const host = process.env.HOST || (lanEnabled ? '0.0.0.0' : '127.0.0.1');
 
-function lanAddress() {
-	for (const ifaces of Object.values(os.networkInterfaces())) {
+// All non-internal IPv4 candidates, physical LAN interfaces first.
+// Tailscale (100.64.0.0/10 CGNAT on tailscale*/utun*/wg* interfaces) and other
+// virtual adapters sort last, so the startup log and Settings lead with the
+// real LAN address. Binding is still 0.0.0.0 (all interfaces) unless HOST
+// pins one — use that to stay off the Tailnet entirely.
+function lanAddresses() {
+	const found = [];
+	for (const [name, ifaces] of Object.entries(os.networkInterfaces())) {
 		for (const iface of ifaces ?? []) {
-			if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+			if (iface.family !== 'IPv4' || iface.internal) continue;
+			if (iface.address.startsWith('169.254.')) continue; // link-local, not routable
+			found.push({ name, address: iface.address });
 		}
 	}
-	return null;
+	const octet = (ip, i) => Number(ip.split('.')[i]);
+	// Tailscale serves CGNAT range 100.64.0.0/10.
+	const isCgnat = (ip) => octet(ip, 0) === 100 && octet(ip, 1) >= 64 && octet(ip, 1) <= 127;
+	const isRfc1918 = (ip) => {
+		const a = octet(ip, 0);
+		const b = octet(ip, 1);
+		return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+	};
+	const isVirtual = (name) =>
+		/^(tailscale|utun|tun|tap|wg|docker|br-|veth|virbr|vmnet|vboxnet|zt|hamachi)/i.test(name);
+	const score = (c) =>
+		(isVirtual(c.name) ? 2 : 0) + (isCgnat(c.address) ? 2 : 0) + (isRfc1918(c.address) ? 0 : 1);
+	found.sort((a, b) => score(a) - score(b));
+	return found;
 }
 
 // --- mDNS broadcast (live-toggleable from the app) -----------------------
@@ -76,10 +125,15 @@ async function stopBroadcast() {
 globalThis.__addarr = {
 	lan: {
 		// true when the process is actually reachable beyond localhost
-		boundLan: host !== '127.0.0.1' && host !== 'localhost',
+		boundLan: !['127.0.0.1', 'localhost', '::1'].includes(host),
 		// --lan / ADDARR_LAN=1 overrides the in-app setting until restart
 		forced: forcedLan,
 		broadcasting: false,
+		// Effective bind address + port, and live interface candidates
+		// (fresh on each call so Tailscale up/down is reflected).
+		host,
+		port,
+		getAddresses: () => lanAddresses().map((c) => c.address),
 		startBroadcast: async () => {
 			await startBroadcast();
 			return published;
@@ -93,9 +147,10 @@ globalThis.__addarr = {
 
 const server = createServer(handler);
 
-// Graceful self-restart: spawn a replacement process (same command line),
-// let it take over the port, then exit. The replacement re-reads the DB
-// settings, so bind address / LAN broadcast changes apply.
+// Graceful self-restart. Under a supervisor, hand the restart back to it: the
+// replacement re-reads the DB settings, so bind address / LAN broadcast
+// changes apply. Standalone, spawn a replacement process (same command line),
+// let it take over the port, then exit.
 async function restart() {
 	console.log('Restarting Addarr…');
 	try {
@@ -103,10 +158,25 @@ async function restart() {
 	} catch {
 		/* best effort */
 	}
+	if (supervisor === 'launchd') {
+		// kickstart -k restarts immediately, bypassing launchd's respawn throttle.
+		spawn('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/com.addarr.server`], {
+			stdio: 'ignore',
+			detached: true
+		}).unref();
+		setTimeout(() => process.exit(0), 250);
+		return;
+	}
+	if (supervisor) {
+		// systemd: Restart=always starts a fresh instance as soon as we exit.
+		setTimeout(() => process.exit(0), 250);
+		return;
+	}
 	const child = spawn(process.execPath, process.argv.slice(1), {
 		env: { ...process.env, ADDARR_TAKEOVER_PORT: String(port) },
-		stdio: 'inherit',
-		detached: true
+		stdio: process.platform === 'win32' ? 'ignore' : 'inherit',
+		detached: true,
+		windowsHide: true
 	});
 	child.unref();
 	server.close(() => process.exit(0));
@@ -134,14 +204,45 @@ function waitPortFree(p, timeoutMs = 15000) {
 	});
 }
 
+// PID file for status/stop on platforms without a real supervisor (Windows),
+// and as a cross-check everywhere else. Removed on the way out.
+const pidPath = join(process.cwd(), 'data', 'addarr.pid');
+
+function writePidFile() {
+	try {
+		mkdirSync(join(process.cwd(), 'data'), { recursive: true });
+		writeFileSync(pidPath, `${process.pid}\n`);
+		process.on('exit', () => {
+			try {
+				if (readFileSync(pidPath, 'utf8').trim() === String(process.pid)) rmSync(pidPath, { force: true });
+			} catch {
+				/* best effort */
+			}
+		});
+	} catch {
+		/* not fatal */
+	}
+}
+
 async function main() {
 	if (process.env.ADDARR_TAKEOVER_PORT) await waitPortFree(port);
 	await new Promise((resolve) => server.listen(port, host, resolve));
-	console.log(`Addarr listening on http://localhost:${port}`);
+	writePidFile();
+	const listenLabel = host === '0.0.0.0' ? 'localhost' : host;
+	console.log(`Addarr listening on http://${listenLabel}:${port}`);
 	if (globalThis.__addarr.lan.boundLan) {
-		const ip = lanAddress();
-		if (ip) console.log(`LAN access:  http://${ip}:${port}`);
-		else console.log('LAN access enabled, but no LAN IPv4 address found yet.');
+		if (host !== '0.0.0.0') {
+			console.log(`Bound to ${host} (HOST override — other interfaces, e.g. Tailscale, are not served).`);
+		} else {
+			const candidates = lanAddresses();
+			if (candidates.length) {
+				console.log(`LAN access:  http://${candidates[0].address}:${port}`);
+				for (const c of candidates.slice(1))
+					console.log(`Also reachable: http://${c.address}:${port} (${c.name})`);
+				if (candidates.length > 1)
+					console.log('To serve only one interface (e.g. keep Addarr off Tailscale), set HOST=<ip> and restart.');
+			} else console.log('LAN access enabled, but no LAN IPv4 address found yet.');
+		}
 		if (lanEnabled) {
 			startBroadcast().then(() => (globalThis.__addarr.lan.broadcasting = published));
 		}

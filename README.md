@@ -23,7 +23,7 @@ Node.js + TypeScript, SvelteKit (SSR), SQLite (`node:sqlite`, zero native deps).
 - **Node.js 22.5 or newer** (an LTS release is fine), the only hard requirement. Check with `node -v`.
 - **Git**, *optional*; only needed if you want to clone or update via git. Downloading a ZIP works just as well.
 
-No database server, no build tools, no containers; `npm start` handles everything else, installing dependencies, building, and serving in one go.
+No database server, no build tools, no containers; `npm start` handles everything else, installing dependencies, building, and starting the server in the background.
 
 ### 1. Install Node.js
 
@@ -74,19 +74,38 @@ npm start
 
 First run takes a minute; subsequent runs are faster. Updating later is the same: grab the latest code (re-download the ZIP or `git pull`) and run `npm start` again.
 
+`npm start` installs Addarr as a **background service** and starts it. The server keeps running after you close the terminal and comes back when you log in. It also drops a desktop icon:
+
+| Platform | Icon | Where it lives |
+|---|---|---|
+| macOS | **Addarr** app | `~/Applications` — Launchpad, Spotlight, Dock |
+| Linux | **Addarr** app | applications menu (`~/.local/share/applications`) |
+| Windows | **Addarr** shortcut | Start menu, plus a hidden launcher in Startup |
+
+Click the **Addarr** icon to start the server if it isn't running and open it in your browser. That is the everyday way in; the terminal is only needed for installing and updating.
+
 On Windows, allow Node.js through the Windows Defender firewall prompt if it appears (check both **Private** and **Public** networks if you'll serve over LAN).
 
 ### 4. Open the app
 
-Browse to `http://localhost:4545`. Other devices on your LAN use `http://<your-machine-ip>:4545` (find the IP with `ipconfig` on Windows, `ipconfig getifaddr en0` on macOS, or `ip addr` on Linux).
+`npm start` opens it for you. After that, use the **Addarr** icon or browse to `http://localhost:4545`. Other devices on your LAN use `http://<your-machine-ip>:4545` (find the IP with `ipconfig` on Windows, `ipconfig getifaddr en0` on macOS, or `ip addr` on Linux).
 
 ### Useful options
 
 ```sh
+npm run status                     # is it running?
+npm run logs                       # follow the log (data/addarr.log)
+npm run restart                    # restart the server
+npm run stop                       # stop it until the next start, click, or login
+npm run uninstall                  # remove the service and the icon (data/addarr.db is kept)
+npm run start:foreground           # run in this terminal instead, with logs on screen
+npm run dev                        # development mode with hot reload
+
 PORT=8080 npm start                # different port (Windows PowerShell: $env:PORT=8080; npm start)
 ADDARR_DB=/path/to/addarr.db npm start   # custom data file location
-npm run dev                        # development mode with hot reload
 ```
+
+`npm start` bakes `PORT`, `HOST`, `ADDARR_LAN`, and `ADDARR_DB` into the background service, so re-run it to change any of those. `npm run start:foreground` is the "watch it work" mode; it needs the terminal to stay open.
 
 ### Sharing on your LAN (broadcasting)
 
@@ -97,7 +116,9 @@ By default Addarr binds to `localhost` only, so nothing else on the network can 
 
 Enabling the setting takes effect for discovery immediately; if the server was started in localhost-only mode, one restart is needed to open the network bind — the app tells you when that's the case.
 
-For headless setups you can also force it at startup: `npm start -- --lan` (or `ADDARR_LAN=1`), which overrides the in-app setting until restart. `HOST=<addr>` binds a specific interface. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs; discovery just won't work.
+For headless setups you can also force it at startup: `npm start -- --lan` (or `ADDARR_LAN=1`), which overrides the in-app setting. `HOST=<addr>` binds a specific interface. Both are baked into the background service, so re-run `npm start` without them to hand control back to the in-app toggle. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs; discovery just won't work.
+
+**Tailscale note:** with "Share on LAN" on, Addarr listens on `0.0.0.0`, so it's also reachable over your Tailnet — and the startup log used to lead with the `100.x` Tailscale address. It now lists the physical LAN address first (Tailscale last). To keep Addarr off the Tailnet entirely, bind just your LAN interface: `HOST=192.168.1.x npm start` (use your machine's LAN IP).
 
 Data (users, sessions, connections, presets, activity log) lives in one SQLite file, `data/addarr.db` by default. Back that file up and you've backed up the whole app.
 

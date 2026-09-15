@@ -2,7 +2,7 @@
 
 A small self-hosted web app for the home LAN. Non-technical household members search for movies and series and add them to Radarr/Sonarr in one tap. An admin mode configures exactly what "add" does and provides deep, curated control over the *arr instances.
 
-Status: **v1.2 complete, M1–M6 implemented and smoke-tested.** v1.1: anonymous member access, admin-only login; visual restyle to light "Precision" theme. v1.2: real acquisition states on poster cards (server-normalized status API: queued/downloading/importing/partial/paused/attention/missing/unreleased, poster progress bar, adaptive polling), admin-only server restart with graceful self-restart and port takeover, LAN sharing toggle in Settings, first-run onboarding handoff (setup → connect → default preset), full mobile adaptation (safe areas, 44px touch targets, no iOS focus zoom), and a technical audit + hardening pass (login attempt backoff, no silent fetch failures, watch-detail strip fix). Visual style: "Precision" theme in a light colorway with near-white semantic-token palette, top-bar app shell, self-hosted Inter, sharp corners, light font weights, hairline structure, mono numerals, console KPI strip, and no emojis. Architecture validated by a 3-advisor council (see session memo); API facts verified against Radarr/Sonarr source and v3 swagger docs.
+Status: **v1.3 complete, M1–M7 implemented and smoke-tested.** v1.1: anonymous member access, admin-only login; visual restyle to light "Precision" theme. v1.2: real acquisition states on poster cards (server-normalized status API: queued/downloading/importing/partial/paused/attention/missing/unreleased, poster progress bar, adaptive polling), admin-only server restart with graceful self-restart and port takeover, LAN sharing toggle in Settings, first-run onboarding handoff (setup → connect → default preset), full mobile adaptation (safe areas, 44px touch targets, no iOS focus zoom), and a technical audit + hardening pass (login attempt backoff, no silent fetch failures, watch-detail strip fix). v1.3: `npm start` installs a per-user background service (launchd / systemd / Windows Startup) and a desktop icon, so the server survives closing the terminal and starts at login; `npm run stop|restart|status|logs|uninstall` manage it, and in-app restart hands back to the supervisor. Visual style: "Precision" theme in a light colorway with near-white semantic-token palette, top-bar app shell, self-hosted Inter, sharp corners, light font weights, hairline structure, mono numerals, console KPI strip, and no emojis. Architecture validated by a 3-advisor council (see session memo); API facts verified against Radarr/Sonarr source and v3 swagger docs.
 
 ---
 
@@ -51,7 +51,7 @@ Principles:
 | Framework | SvelteKit (SSR) | server routes double as the internal API; minimal client JS, right size for "search box + forms" |
 | DB | SQLite via better-sqlite3 | zero-config, file-based, one container |
 | Styling | Plain CSS with semantic tokens | zero deps, full control for a minimal dashboard look |
-| Deploy | Single command launch: `npm start` (install + build + `node build`) | zero-deploy, OS-agnostic |
+| Deploy | Single command launch: `npm start` (install + build + install/refresh the per-user background service) | zero-deploy, OS-agnostic |
 
 Rejected alternates: FastAPI/Go backends (fine, but two runtimes or more boilerplate), Next.js/Nuxt (heavier than needed), heavy SPA (oracle: scope inversion for a LAN app).
 
@@ -174,6 +174,9 @@ Library edit/delete (confirm-gated), queue, history, commands buttons, exclusion
 
 ### M6: Acquisition states, mobile, hardening ✅ (v1.2)
 Server-normalized status API and real states on poster cards (badges, progress bar, time-left strip, adaptive polling); admin-only restart with self-restart + port takeover; LAN sharing toggle; setup→settings onboarding handoff; mobile pass (safe areas, 44px targets, iOS zoom fix); technical audit + hardening (login backoff, error states on every fetch path, watch-detail strip fix). *Done when:* an anonymous member can watch an add go from queued to available on a phone, unsupervised.
+
+### M7: Background service + desktop icon ✅ (v1.3)
+`npm start` installs and starts a per-user service (macOS launchd LaunchAgent, Linux systemd user unit, Windows Startup launcher) with an app icon (macOS `~/Applications/Addarr.app`, XDG desktop entry, Start Menu shortcut); `npm run stop|restart|status|logs|uninstall` manage it; in-app restart defers to the supervisor (launchd `kickstart -k`, systemd `Restart=always`) instead of spawning a competing process; PID file for status/stop. *Done when:* the terminal can be closed and clicking the app icon opens a running Addarr.
 
 ---
 

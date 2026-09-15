@@ -7,6 +7,9 @@ type LanControl = {
 	boundLan: boolean;
 	forced: boolean;
 	broadcasting: boolean;
+	host?: string;
+	port?: number;
+	getAddresses?: () => string[];
 	startBroadcast: () => Promise<boolean>;
 	stopBroadcast: () => Promise<boolean>;
 };
@@ -26,6 +29,10 @@ export const GET: RequestHandler = async () => {
 		// Live state of the running process.
 		broadcasting: c?.broadcasting ?? false,
 		boundLan: c?.boundLan ?? false,
+		// Effective bind + live interface candidates (LAN first, Tailscale last).
+		host: c?.host ?? null,
+		port: c?.port ?? null,
+		addresses: c?.getAddresses?.() ?? [],
 		// --lan / ADDARR_LAN=1 was passed: the CLI wins until restart.
 		forced: c?.forced ?? false,
 		// No launcher control surface (e.g. `node build` run directly).
