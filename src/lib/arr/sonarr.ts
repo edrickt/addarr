@@ -1,37 +1,12 @@
 import { ArrClient } from './client.js';
+import { buildAddResource, type SonarrSeries } from './add-resource.js';
 import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.js';
 import { seriesStatus } from './status.js';
 
 /** Sonarr API v3 adapter. Verified field names against Sonarr source:
  *  SeriesLookupController (GET /series/lookup?term=), SeriesController (POST /series),
- *  AddSeriesOptions (SearchForMissingEpisodes). Lookup results for series not yet
- *  in the library return unreliable monitored/season data (Sonarr issue #5761) —
- *  season monitoring is therefore always rebuilt from the admin preset here. */
-
-type SonarrSeason = { seasonNumber: number; monitored: boolean };
-
-type SonarrSeries = {
-	id?: number;
-	title: string;
-	year?: number;
-	overview?: string;
-	tvdbId: number;
-	titleSlug?: string;
-	seriesType?: string;
-	monitored?: boolean;
-	qualityProfileId?: number;
-	rootFolderPath?: string;
-	tags?: number[];
-	statistics?: {
-		seasonCount?: number;
-		episodeFileCount?: number;
-		episodeCount?: number;
-		totalEpisodeCount?: number;
-		sizeOnDisk?: number;
-	};
-	images?: { coverType: string; url?: string; remoteUrl?: string }[];
-	seasons?: SonarrSeason[];
-};
+ *  AddSeriesOptions (SearchForMissingEpisodes). The POST /series resource is built
+ *  by `buildAddResource` — see add-resource.ts for the payload and its constraints. */
 
 /** Paged *arr responses (queue, history, blocklist) wrap records. */
 type Paged<T> = { page: number; pageSize: number; totalRecords: number; records: T[] } | T[];
@@ -131,26 +106,7 @@ export class SonarrClient extends ArrClient {
 	}
 
 	async add(series: SonarrSeries, defaults: AddDefaults): Promise<SonarrSeries> {
-		const seasons = buildSeasons(series, defaults.seasonMonitorPolicy ?? 'all');
-		const resource = {
-			title: series.title,
-			year: series.year,
-			overview: series.overview,
-			tvdbId: series.tvdbId,
-			titleSlug: series.titleSlug,
-			images: series.images,
-			seriesType: defaults.seriesType ?? series.seriesType ?? 'standard',
-			seasons,
-			qualityProfileId: defaults.qualityProfileId,
-			rootFolderPath: defaults.rootFolderPath,
-			monitored: defaults.monitored,
-			tags: defaults.tags,
-			addOptions: {
-				searchForMissingEpisodes: defaults.searchOnAdd,
-				monitor: 'none' // season-level monitoring handled via `seasons` above
-			}
-		};
-		return this.raw<SonarrSeries>('POST', '/series', resource);
+		return this.raw<SonarrSeries>('POST', '/series', buildAddResource(series, defaults));
 	}
 
 	async toPosterCards(lookupResults: SonarrSeries[]): Promise<PosterCard[]> {
@@ -180,26 +136,3 @@ export class SonarrClient extends ArrClient {
 	}
 }
 
-function buildSeasons(series: SonarrSeries, policy: 'all' | 'none' | 'first' | 'latest'): SonarrSeason[] {
-	const numbers = (series.seasons ?? [])
-		.map((s) => s.seasonNumber)
-		.filter((n) => Number.isInteger(n) && n > 0);
-	if (numbers.length === 0) return [];
-
-	let monitored: Set<number>;
-	switch (policy) {
-		case 'none':
-			monitored = new Set();
-			break;
-		case 'first':
-			monitored = new Set([Math.min(...numbers)]);
-			break;
-		case 'latest':
-			monitored = new Set([Math.max(...numbers)]);
-			break;
-		case 'all':
-		default:
-			monitored = new Set(numbers);
-	}
-	return numbers.map((n) => ({ seasonNumber: n, monitored: monitored.has(n) }));
-}
