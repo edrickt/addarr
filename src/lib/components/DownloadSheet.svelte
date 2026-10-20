@@ -108,6 +108,13 @@
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 
 <div class="overlay">
+	<button
+		class="backdrop"
+		type="button"
+		tabindex="-1"
+		aria-label="Close download details"
+		onclick={onclose}
+	></button>
 	<div
 		class="card dialog download-sheet"
 		role="dialog"
@@ -240,7 +247,26 @@
 
 <style>
 	.download-sheet {
+		position: relative;
+		z-index: 1;
 		max-width: 560px;
+	}
+	/* A full-viewport button behind the dialog: clicks outside the card close
+	   the sheet without adding a click handler to the non-interactive overlay. */
+	.backdrop {
+		position: fixed;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		cursor: default;
+	}
+	.backdrop:hover:not(:disabled) {
+		background: transparent;
 	}
 	.sheet-head {
 		display: grid;
