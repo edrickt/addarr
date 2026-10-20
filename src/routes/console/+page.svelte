@@ -363,7 +363,7 @@
 							<small>
 								<span class="dot" class:active={q.status === 'downloading'} class:warn={q.status === 'queued' || q.status === 'completed'}></span>
 								{String(q.status ?? '—')} ·
-								<span class="mono">{bytes(Number(q.size ?? 0) - Number(q.sizeLeft ?? 0))} / {bytes(q.size)}</span>
+								<span class="mono">{bytes(Number(q.size ?? 0) - Number(q.sizeleft ?? q.sizeLeft ?? 0))} / {bytes(q.size)}</span>
 								· <span class="mono">{String(q.timeleft ?? '—')}</span>
 							</small>
 						</div>

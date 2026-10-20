@@ -1,6 +1,16 @@
 <script lang="ts">
 	import type { PosterCard } from '$lib/arr/types';
-import type { ArrItemState } from '$lib/arr/status';
+	import type { ArrItemState } from '$lib/arr/status';
+	import type { DownloadDetail } from '$lib/arr/downloads';
+	import DownloadSheet from '$lib/components/DownloadSheet.svelte';
+	import {
+		initials,
+		memberProgressBar,
+		memberStateDetail,
+		memberStateLabel,
+		memberStateTone,
+		STATIC_MEMBER_STATES
+	} from '$lib/arr/presentation';
 
 	type WatchState = ArrItemState;
 
@@ -10,6 +20,8 @@ import type { ArrItemState } from '$lib/arr/status';
 		watchStatus?: WatchState;
 		watchProgress?: number | null;
 		watchTimeLeft?: number | null;
+		watchSize?: number | null;
+		watchSizeLeft?: number | null;
 		watchEpisodes?: { have: number; total: number } | null;
 	};
 
@@ -31,6 +43,25 @@ import type { ArrItemState } from '$lib/arr/status';
 	let retryTick = $state(0);
 	// Keyed by kind + sourceId — a movie and a series can share a sourceId.
 	let busyId = $state<string | null>(null);
+	let selectedCard = $state<Result | null>(null);
+
+	const selectedDetail = $derived(selectedCard ? cardToDetail(selectedCard) : null);
+
+	function cardToDetail(card: Result): DownloadDetail {
+		return {
+			kind: card.kind,
+			id: card.watchId,
+			title: card.title,
+			year: card.year,
+			posterUrl: card.posterUrl,
+			state: card.watchStatus ?? 'waiting',
+			progress: card.watchProgress ?? null,
+			timeLeftSeconds: card.watchTimeLeft ?? null,
+			size: card.watchSize ?? null,
+			sizeLeft: card.watchSizeLeft ?? null,
+			episodes: card.watchEpisodes ?? null
+		};
+	}
 
 	let searchSeq = 0;
 
@@ -73,6 +104,8 @@ import type { ArrItemState } from '$lib/arr/status';
 							watchStatus: card.status?.state,
 							watchProgress: card.status?.progress ?? null,
 							watchTimeLeft: card.status?.timeLeftSeconds ?? null,
+							watchSize: card.status?.size ?? null,
+							watchSizeLeft: card.status?.sizeLeft ?? null,
 							watchEpisodes: card.status?.episodes ?? null
 						});
 					}
@@ -167,7 +200,7 @@ import type { ArrItemState } from '$lib/arr/status';
 				(r) =>
 					r.watchId &&
 					r.watchStatus &&
-					!STATIC_STATES.has(r.watchStatus)
+					!STATIC_MEMBER_STATES.has(r.watchStatus)
 				);
 			if (watching.length > 0) {
 				for (const card of watching) {
@@ -184,6 +217,8 @@ import type { ArrItemState } from '$lib/arr/status';
 						card.watchStatus = data.state;
 						card.watchProgress = data.progress ?? null;
 						card.watchTimeLeft = data.timeLeftSeconds ?? null;
+						card.watchSize = data.size ?? null;
+						card.watchSizeLeft = data.sizeLeft ?? null;
 						card.watchEpisodes = data.episodes ?? null;
 						if (data.state === 'available') {
 							card.inLibrary = true;
@@ -206,92 +241,25 @@ import type { ArrItemState } from '$lib/arr/status';
 		};
 	});
 
-	// Member-facing vocabulary — the only place labels are worded.
-	// Problem states are hidden from members on purpose: the badge shows a
-	// neutral, truthful "Waiting" while the admin sees the real state in the
-	// console. Failures route to the admin, not the household.
-	const WATCH_LABEL: Record<Exclude<WatchState, 'available'>, string> = {
-		waiting: 'Looking for it…',
-		queued: 'Queued',
-		paused: 'Paused',
-		downloading: 'Downloading…',
-		importing: 'Importing…',
-		partial: 'Episodes',
-		attention: 'Waiting',
-		missing: 'Missing',
-		unreleased: 'Unreleased'
-	};
-
-	// States that never change on their own — no point polling them.
-	const STATIC_STATES: ReadonlySet<WatchState> = new Set(['available', 'missing', 'unreleased']);
-
-	/** Short badge text shown on the poster. */
+	// Shared member-facing vocabulary — see $lib/arr/presentation.
 	function badgeText(card: Result): string {
-		const s = card.watchStatus;
-		if (!s || s === 'available') return 'In library';
-		if (s === 'partial' && card.watchEpisodes) {
-			return `${card.watchEpisodes.have} of ${card.watchEpisodes.total}`;
-		}
-		return WATCH_LABEL[s].replace(/…$/, '');
+		return memberStateLabel(card.watchStatus!, card.watchEpisodes);
 	}
 
-	function badgeTone(card: Result): 'ok' | 'active' | 'warn' | 'muted' {
-		switch (card.watchStatus) {
-			case 'downloading':
-			case 'queued':
-			case 'importing':
-				return 'active';
-			case 'paused':
-				return 'warn';
-			case 'attention':
-			case 'partial':
-			case 'missing':
-			case 'unreleased':
-			case 'waiting':
-				return 'muted';
-			default:
-				return 'ok'; // available
-		}
+	function badgeTone(card: Result) {
+		return memberStateTone(card.watchStatus!);
 	}
 
-	/** Detail line under the poster — only when it adds info beyond the badge. */
 	function watchDetail(card: Result): string | null {
-		const s = card.watchStatus;
-		if (!s || s === 'available' || s === 'missing' || s === 'unreleased') return null;
-		if (s === 'downloading' && card.watchTimeLeft != null) return `${fmtLeft(card.watchTimeLeft)} left`;
-		if (s === 'partial' && card.watchEpisodes) {
-			return `${card.watchEpisodes.have} of ${card.watchEpisodes.total} episodes`;
-		}
-		if (s === 'attention') return null; // hidden from members — admin sees it in the console
-		if (s === 'waiting' || (s === 'downloading' && card.watchTimeLeft == null)) return WATCH_LABEL[s];
-		return null; // queued/paused/importing/attention — the badge already says it
+		if (!card.watchStatus) return null;
+		return memberStateDetail(card.watchStatus, {
+			timeLeftSeconds: card.watchTimeLeft,
+			episodes: card.watchEpisodes
+		});
 	}
 
-	function fmtLeft(seconds: number): string {
-		if (seconds < 60) return 'under a minute';
-		if (seconds < 90 * 60) return `${Math.round(seconds / 60)}m`;
-		return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
-	}
-
-	type Bar = { mode: 'determinate' | 'indeterminate'; progress: number | null; tone: 'primary' | 'muted' | 'warning' } | null;
-
-	function watchBar(card: Result): Bar {
-		const s = card.watchStatus!;
-		const p = card.watchProgress ?? null;
-		switch (s) {
-			case 'downloading':
-				return p != null ? { mode: 'determinate', progress: p, tone: 'primary' } : { mode: 'indeterminate', progress: null, tone: 'primary' };
-			case 'queued':
-				return { mode: 'indeterminate', progress: null, tone: 'primary' };
-			case 'importing':
-				return { mode: 'indeterminate', progress: null, tone: 'primary' };
-			case 'paused':
-				return p != null ? { mode: 'determinate', progress: p, tone: 'warning' } : { mode: 'indeterminate', progress: null, tone: 'warning' };
-			case 'partial':
-				return p != null ? { mode: 'determinate', progress: p, tone: 'muted' } : null;
-			default:
-				return null; // waiting, available — no bar
-		}
+	function watchBar(card: Result) {
+		return memberProgressBar(card.watchStatus!, card.watchProgress);
 	}
 
 	const modes: { key: Mode; label: string }[] = [
@@ -299,15 +267,6 @@ import type { ArrItemState } from '$lib/arr/status';
 		{ key: 'movie', label: 'Movies' },
 		{ key: 'series', label: 'Series' }
 	];
-
-	function initials(title: string): string {
-		const parts = title.trim().split(/\s+/).filter(Boolean);
-		if (parts.length === 0) return '';
-		return parts
-			.slice(0, 2)
-			.map((w) => w[0]!.toUpperCase())
-			.join('');
-	}
 </script>
 
 <svelte:head>
@@ -375,6 +334,14 @@ import type { ArrItemState } from '$lib/arr/status';
 					/>
 				{/if}
 				{#if card.watchStatus}
+					<button
+						class="poster-open"
+						type="button"
+						aria-label={`View download status for ${card.title}`}
+						onclick={() => (selectedCard = card)}
+					></button>
+				{/if}
+				{#if card.watchStatus}
 					<span
 						class="badge"
 						class:active={badgeTone(card) === 'active'}
@@ -426,6 +393,10 @@ import type { ArrItemState } from '$lib/arr/status';
 		</div>
 	{/each}
 </div>
+
+{#if selectedDetail}
+	<DownloadSheet item={selectedDetail} onclose={() => (selectedCard = null)} />
+{/if}
 
 {#if toast}
 	<div class="toast" class:error={toastIsError} role={toastIsError ? 'alert' : 'status'}>
@@ -523,6 +494,24 @@ import type { ArrItemState } from '$lib/arr/status';
 		height: 100%;
 		object-fit: cover;
 		display: block;
+	}
+	/* Transparent click target over the poster for in-library items. The Add
+	   button stays outside this wrapper, so it keeps its own hit area. */
+	.poster-open {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		cursor: pointer;
+	}
+	.poster-open:hover:not(:disabled) {
+		background: transparent;
 	}
 	.poster-fallback {
 		display: flex;
@@ -646,7 +635,7 @@ import type { ArrItemState } from '$lib/arr/status';
 	/* Add button and the In library/Added chip must be the same box so the
 	   card doesn't jump when an item's state changes. Fixed height + flex
 	   centering keeps UA line-height/border quirks from shifting either. */
-	.poster-card button {
+	.poster-meta button {
 		margin-top: auto;
 		width: 100%;
 		height: 2.75rem;

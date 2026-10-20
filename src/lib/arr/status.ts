@@ -25,6 +25,8 @@ export type ArrItemStatus = {
 	state: ArrItemState;
 	progress?: number | null;
 	timeLeftSeconds?: number | null;
+	size?: number | null;
+	sizeLeft?: number | null;
 	episodes?: { have: number; total: number } | null;
 };
 
@@ -45,7 +47,9 @@ export function parseTimeleft(v: unknown): number | null {
  */
 export function aggregateQueue(rows: QueueRow[]): ArrItemStatus {
 	const size = rows.reduce((a, q) => a + Number(q.size ?? 0), 0);
-	const left = rows.reduce((a, q) => a + Number(q.sizeLeft ?? 0), 0);
+	// *arr serializes Sizeleft as `sizeleft`; keep the camelCase fallback for
+	// older fixtures/payloads.
+	const left = rows.reduce((a, q) => a + Number(q.sizeleft ?? q.sizeLeft ?? 0), 0);
 	const progress = size > 0 ? Math.round(((size - left) / size) * 100) : null;
 
 	const timelefts = rows.map((q) => parseTimeleft(q.timeleft)).filter((v): v is number => v != null);
@@ -72,7 +76,7 @@ export function aggregateQueue(rows: QueueRow[]): ArrItemStatus {
 				: paused
 					? 'paused'
 					: 'queued';
-	return { state, progress, timeLeftSeconds };
+	return { state, progress, timeLeftSeconds, size, sizeLeft: left };
 }
 
 type MovieLike = {

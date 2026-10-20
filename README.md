@@ -7,6 +7,7 @@ The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side (
 ## Features
 
 - **Member mode:** search box → poster grid → one **Add** button, no account needed. "In library ✓" badge, live acquisition status after adding: `queued → downloading → importing → available`, plus paused/partial states, with a progress bar and time-left on the poster.
+- **Downloads tab:** a household-wide, read-only view of everything in flight across Radarr and Sonarr, grouped one row per title. Tapping a download — or an in-library search result — opens the same detail sheet with progress, ETA, size, and episode counts.
 - **Admin presets** define what Add does per service: quality profile, root folder, monitored, tags, minimum availability, search-on-add, and (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
 - **Operations console:** curated screens for day-to-day acquisition: library edit/delete (typed confirmation), queue, history, import exclusions, blocklist, calendar, and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`). No free-form commands.
 - **Read-only passthrough:** `GET /arrapi/:service/<allow-listed path>` to inspect any payload the curated UI doesn't show. Write verbs are structurally blocked.
@@ -139,6 +140,7 @@ Addarr is designed for trusted networks. LAN access is opt-in (see **Sharing on 
 | `GET /api/search?service=movie\|series&q=` | member | trimmed poster-card lookup + in-library flag |
 | `POST /api/add` | member | add via default preset, dedupe-checked, logged |
 | `GET /api/status/:kind/:id` | member | polled badge: queued/downloading/importing/partial/paused/attention/missing/unreleased/available |
+| `GET /api/downloads` | member | normalized, title-grouped active queue for the Downloads tab and detail sheet |
 | `/api/presets` | admin | preset CRUD + live dropdown options |
 | `/api/console/*` | admin | library, queue, history, exclusions, blocklist, calendar, curated commands |
 | `/api/services`, `/api/activity` | admin | connections, activity log |

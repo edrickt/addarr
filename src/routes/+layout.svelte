@@ -11,6 +11,7 @@
 
 	const nav = $derived([
 		{ href: '/', label: 'Search', icon: 'search' },
+		{ href: '/downloads', label: 'Downloads', icon: 'download' },
 		...(data.user?.role === 'admin'
 			? [
 					{ href: '/presets', label: 'Presets', icon: 'sliders' },
@@ -41,6 +42,10 @@
 						{#if item.icon === 'search'}
 							<circle cx="11" cy="11" r="8" />
 							<path d="m21 21-4.3-4.3" />
+						{:else if item.icon === 'download'}
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+							<polyline points="7 10 12 15 17 10" />
+							<line x1="12" x2="12" y1="15" y2="3" />
 						{:else if item.icon === 'users'}
 							<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
 							<circle cx="9" cy="7" r="4" />

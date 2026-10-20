@@ -37,13 +37,14 @@ export type AddDefaults = {
 };
 
 export class ArrError extends Error {
-	constructor(
-		message: string,
-		public readonly status: number,
-		public readonly detail?: unknown
-	) {
+	public readonly status: number;
+	public readonly detail?: unknown;
+
+	constructor(message: string, status: number, detail?: unknown) {
 		super(message);
 		this.name = 'ArrError';
+		this.status = status;
+		this.detail = detail;
 	}
 }
 

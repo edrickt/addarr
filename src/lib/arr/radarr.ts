@@ -56,8 +56,19 @@ export class RadarrClient extends ArrClient {
 		return this.raw('DELETE', `/movie/${id}?deleteFiles=${opts.deleteFiles}&addImportExclusion=${opts.addExclusion}`);
 	}
 
-	queue(): Promise<Record<string, unknown>[]> {
-		return this.paged('/queue?pageSize=200');
+	async queue(options: { includeMovie?: boolean } = {}): Promise<Record<string, unknown>[]> {
+		const params = new URLSearchParams({ pageSize: '200' });
+		if (options.includeMovie) params.set('includeMovie', 'true');
+		const all: Record<string, unknown>[] = [];
+		for (let page = 1; page <= 100; page++) {
+			params.set('page', String(page));
+			const res = await this.raw<Paged<Record<string, unknown>>>('GET', `/queue?${params.toString()}`);
+			const records = Array.isArray(res) ? res : (res.records ?? []);
+			all.push(...records);
+			const total = Array.isArray(res) ? records.length : Number(res.totalRecords);
+			if (records.length === 0 || !Number.isFinite(total) || all.length >= total) break;
+		}
+		return all;
 	}
 
 	removeQueueItem(id: number, removeFromClient: boolean): Promise<void> {
