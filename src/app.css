@@ -434,6 +434,16 @@ a,
 	.topnav {
 		order: 3;
 		flex-basis: 100%;
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+	.topnav::-webkit-scrollbar {
+		display: none;
+	}
+	.topnav a {
+		flex-shrink: 0;
 	}
 	.user-badge {
 		display: none;

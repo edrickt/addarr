@@ -276,6 +276,7 @@
 <h1 class="sr-only">Search</h1>
 
 <div class="search-bar">
+	<p class="eyebrow">Find something to watch</p>
 	<input
 		class="search-input"
 		type="search"
@@ -319,6 +320,13 @@
 {/if}
 
 <div class="sr-only" aria-live="polite">{announce}</div>
+
+{#if results.length > 0}
+	<div class="list-head">
+		<h2>Results</h2>
+		<span>{results.length} {results.length === 1 ? 'title' : 'titles'}</span>
+	</div>
+{/if}
 
 <div class="grid">
 	{#each results as card (card.kind + card.sourceId)}
@@ -377,9 +385,9 @@
 			<div class="poster-meta">
 				<p class="title" title={card.title}>{card.title}</p>
 				<p class="year">{card.year ?? ''}</p>
-				{#if card.inLibrary}
+				{#if card.watchStatus === 'available' || (!card.watchStatus && card.inLibrary)}
 					<span class="added-chip">In library</span>
-				{:else if card.watchStatus && card.watchStatus !== 'available'}
+				{:else if card.watchStatus}
 					<span class="added-chip">Added</span>
 				{:else}
 					<button
@@ -416,16 +424,25 @@
 
 <style>
 	.search-bar {
-		margin-bottom: 1.5rem;
+		margin-bottom: 1.25rem;
+	}
+	.eyebrow {
+		margin: 0 0 0.45rem;
+		color: var(--muted-foreground);
+		font-size: 0.68rem;
+		font-weight: 500;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
 	}
 	.search-input {
+		max-width: 640px;
 		font-size: 1.15rem;
 		padding: 0.8rem 1rem;
 	}
 	.mode-tabs {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.6rem;
+		gap: 0.35rem;
+		margin-top: 0.55rem;
 	}
 	.tab {
 		margin-top: 0;
@@ -434,7 +451,8 @@
 		border: 1px solid var(--border);
 		color: var(--muted-foreground);
 		font-weight: 500;
-		padding: 0.55rem 1rem;
+		padding: 0.45rem 0.85rem;
+		font-size: 0.8rem;
 		border-radius: var(--radius);
 	}
 	.tab.active {
@@ -443,16 +461,28 @@
 		color: var(--background);
 		font-weight: 450;
 	}
-	.grid {
+	.list-head {
 		display: flex;
-		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
 		gap: 1rem;
-		/* Center partial rows — on phones a 2-card row leaves stray space
-	   that otherwise piles up on the right. */
-		justify-content: center;
+		margin: 0 0 0.7rem;
+	}
+	.list-head h2 {
+		margin: 0;
+		font-size: 0.95rem;
+	}
+	.list-head span {
+		color: var(--muted-foreground);
+		font-size: 0.72rem;
+	}
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 1.1rem 0.8rem;
 	}
 	.poster-card {
-		width: 150px;
+		min-width: 0;
 		/* Column layout so the Add button/chip pins to the card bottom —
 	   one- and two-line titles keep their actions on the same baseline. */
 		display: flex;
@@ -462,6 +492,12 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+	}
+	@media (min-width: 620px) {
+		.grid {
+			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+			gap: 1.25rem 1rem;
+		}
 	}
 	.poster-card:hover .poster-wrap {
 		border-color: var(--border-strong);
@@ -514,10 +550,11 @@
 		background: transparent;
 	}
 	.poster-fallback {
+		position: absolute;
+		inset: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 100%;
 		font-size: 1.6rem;
 		color: var(--muted-foreground);
 		letter-spacing: 0.05em;
@@ -653,10 +690,10 @@
 		height: 2.75rem;
 		padding: 0;
 		box-sizing: border-box;
-		font-size: 0.95rem;
+		font-size: 0.78rem;
 		color: var(--muted-foreground);
-		background: var(--elevated);
-		border: 1px solid var(--border);
+		background: transparent;
+		border: 0;
 	}
 	.empty-invite {
 		margin-top: 2.5rem;
