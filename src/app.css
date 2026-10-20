@@ -392,19 +392,22 @@ a,
 	align-items: flex-start;
 	justify-content: center;
 	padding: 10vh 1rem 2rem;
+	overflow-x: hidden;
 	overflow-y: auto;
 }
 
 .overlay .dialog {
 	margin: 0;
 	width: 100%;
-	max-width: 500px;
+	max-width: min(500px, 100%);
+	box-sizing: border-box;
+	min-width: 0;
 	border-color: var(--border-strong);
 	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
 }
 
 .overlay .dialog.wide {
-	max-width: 640px;
+	max-width: min(640px, 100%);
 }
 
 .dialog:focus {
@@ -427,14 +430,19 @@ a,
 
 @media (max-width: 760px) {
 	.topbar {
-		padding: 0.5rem 1rem;
-		gap: 0.75rem;
-		flex-wrap: wrap;
+		padding: 0.35rem max(0.75rem, env(safe-area-inset-right, 0px)) 0.35rem
+			max(0.75rem, env(safe-area-inset-left, 0px));
+		gap: 0.5rem;
+		flex-wrap: nowrap;
+	}
+	.brand {
+		flex-shrink: 0;
+		padding: 0.65rem 0.25rem;
 	}
 	.topnav {
-		order: 3;
-		flex-basis: 100%;
+		min-width: 0;
 		flex-wrap: nowrap;
+		gap: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
 		-webkit-overflow-scrolling: touch;
@@ -444,6 +452,18 @@ a,
 	}
 	.topnav a {
 		flex-shrink: 0;
+		padding: 0.65rem 0.55rem;
+	}
+	.topnav a svg {
+		display: none;
+	}
+	.topbar-actions {
+		flex-shrink: 0;
+	}
+	.topbar-actions .signin {
+		padding: 0.65rem 0.25rem;
+		font-size: 0.75rem;
+		white-space: nowrap;
 	}
 	.user-badge {
 		display: none;
@@ -475,6 +495,33 @@ a,
 		padding: 0.7rem 0.5rem;
 	}
 	.topbar-actions .signin {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
 		padding: 0.65rem 0.8rem;
+	}
+}
+
+/* ---- mobile detail sheet: anchored to the bottom, scrolls internally ---- */
+
+@media (max-width: 520px) {
+	.overlay.sheet-overlay {
+		align-items: flex-end;
+		padding: 0;
+		overflow: hidden;
+	}
+	.overlay.sheet-overlay .dialog {
+		width: 100%;
+		max-width: none;
+		max-height: calc(100vh - 4rem);
+		max-height: calc(100dvh - 4rem);
+		margin: 0;
+		border-left: 0;
+		border-right: 0;
+		border-bottom: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding-bottom: max(1.1rem, env(safe-area-inset-bottom, 0px));
+		box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.25);
 	}
 }

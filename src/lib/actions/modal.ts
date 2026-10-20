@@ -1,7 +1,25 @@
-// Modal dialog behavior: initial focus, Tab trapping, and focus return to
-// the triggering element on close. Apply with `use:modal` on the dialog card.
+// Modal dialog behavior: initial focus, Tab trapping, body scroll lock, and
+// focus return to the triggering element on close. Apply with `use:modal` on
+// the dialog card.
+let scrollLocks = 0;
+let previousBodyOverflow = '';
+
+function lockBodyScroll() {
+	if (scrollLocks++ === 0) {
+		previousBodyOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+	}
+}
+
+function unlockBodyScroll() {
+	if (--scrollLocks === 0) {
+		document.body.style.overflow = previousBodyOverflow;
+	}
+}
+
 export function modal(node: HTMLElement) {
 	const prev = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	lockBodyScroll();
 	node.focus();
 
 	function focusables(): HTMLElement[] {
@@ -39,6 +57,7 @@ export function modal(node: HTMLElement) {
 		destroy() {
 			node.removeEventListener('keydown', onKeydown);
 			document.removeEventListener('focusin', onFocusIn);
+			unlockBodyScroll();
 			prev?.focus();
 		}
 	};

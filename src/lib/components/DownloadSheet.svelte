@@ -107,7 +107,7 @@
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 
-<div class="overlay">
+<div class="overlay sheet-overlay">
 	<button
 		class="backdrop"
 		type="button"
@@ -123,6 +123,12 @@
 		tabindex="-1"
 		use:modal
 	>
+		<button class="sheet-close" type="button" aria-label="Close download details" onclick={onclose}>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M6 6l12 12M18 6 6 18" />
+			</svg>
+		</button>
+
 		<div class="sheet-head">
 			<div class="poster">
 				<span class="poster-fallback mono">{initials(item.title)}</span>
@@ -251,6 +257,34 @@
 		z-index: 1;
 		max-width: 560px;
 	}
+	.sheet-close {
+		position: absolute;
+		top: 0.35rem;
+		right: 0.35rem;
+		z-index: 3;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		margin: 0;
+		padding: 0;
+		background: transparent;
+		border: 0;
+		color: var(--muted-foreground);
+	}
+	.sheet-close:hover:not(:disabled) {
+		background: var(--elevated);
+		color: var(--foreground);
+	}
+	.sheet-close svg {
+		width: 18px;
+		height: 18px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.5;
+		stroke-linecap: round;
+	}
 	/* A full-viewport button behind the dialog: clicks outside the card close
 	   the sheet without adding a click handler to the non-interactive overlay. */
 	.backdrop {
@@ -300,6 +334,7 @@
 	}
 	.sheet-copy {
 		min-width: 0;
+		padding-right: 2.25rem;
 	}
 	.sheet-copy h2 {
 		margin-top: 0;
@@ -421,8 +456,12 @@
 		font-weight: 450;
 	}
 	.season-head .mono {
+		min-width: 0;
+		overflow: hidden;
 		color: var(--muted-foreground);
 		font-size: 0.75rem;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.episode-list {
 		list-style: none;
@@ -452,8 +491,11 @@
 		white-space: nowrap;
 	}
 	.ep-meta {
+		max-width: 45%;
+		overflow: hidden;
 		color: var(--muted-foreground);
 		font-size: 0.75rem;
+		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.retry-files {
@@ -471,6 +513,9 @@
 	@media (max-width: 520px) {
 		.sheet-head {
 			grid-template-columns: 82px 1fr;
+		}
+		.sheet-actions button {
+			width: 100%;
 		}
 	}
 </style>
