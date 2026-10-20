@@ -4,6 +4,7 @@
 //   POST /__mock/radarr/movie     body: full movie record (id honored)
 //   POST /__mock/radarr/queue     body: array of queue records
 //   POST /__mock/sonarr/series    body: full series record (id honored)
+//   POST /__mock/sonarr/episodes  body: array of episode records
 //   POST /__mock/sonarr/queue     body: array of queue records
 import http from 'node:http';
 const j = (r, c, b) => { r.writeHead(c, { 'Content-Type': 'application/json' }); r.end(JSON.stringify(b)); };
@@ -57,6 +58,7 @@ http.createServer(async (req, res) => {
 
 // ---------------------------------------------------------------- Sonarr
 const series = [];
+let sonarrEpisodes = [];
 let sonarrQueue = [];
 http.createServer(async (req, res) => {
 	const url = new URL(req.url, 'http://x');
@@ -70,6 +72,7 @@ http.createServer(async (req, res) => {
 			else series.push(body);
 			return j(res, 200, body);
 		}
+		if (p === '/__mock/sonarr/episodes') { sonarrEpisodes = body; return j(res, 200, { ok: true }); }
 		if (p === '/__mock/sonarr/queue') { sonarrQueue = body; return j(res, 200, { ok: true }); }
 		return j(res, 404, {});
 	}
@@ -86,6 +89,10 @@ http.createServer(async (req, res) => {
 	}
 	if (p === '/api/v3/series/lookup') {
 		return j(res, 200, [...series, { tvdbId: 999, title: 'Not Added Show', year: 2024, images: [], seasons: [] }]);
+	}
+	if (p === '/api/v3/episode') {
+		const seriesId = Number(url.searchParams.get('seriesId'));
+		return j(res, 200, seriesId ? sonarrEpisodes.filter((ep) => ep.seriesId === seriesId) : sonarrEpisodes);
 	}
 	if (p === '/api/v3/queue') return j(res, 200, { records: sonarrQueue });
 	j(res, 404, {});

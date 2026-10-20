@@ -9,7 +9,7 @@
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test": "node --test src/lib/arr/add-resource.test.ts src/lib/arr/downloads.test.ts src/lib/arr/presentation.test.ts",
+		"test": "node --test src/lib/arr/add-resource.test.ts src/lib/arr/downloads.test.ts src/lib/arr/files.test.ts src/lib/arr/presentation.test.ts",
 		"start": "npm install --no-audit --no-fund && npm run build && node scripts/service.mjs start",
 		"start:foreground": "npm install --no-audit --no-fund && npm run build && node scripts/serve.mjs",
 		"serve": "node scripts/serve.mjs",

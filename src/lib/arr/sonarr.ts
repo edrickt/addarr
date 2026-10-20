@@ -44,8 +44,13 @@ export class SonarrClient extends ArrClient {
 		return this.raw('DELETE', `/series/${id}?deleteFiles=${opts.deleteFiles}&addImportExclusion=${opts.addExclusion}`);
 	}
 
-	episodes(seriesId: number): Promise<Record<string, unknown>[]> {
-		return this.raw('GET', `/episode?seriesId=${seriesId}`);
+	episodes(
+		seriesId: number,
+		options: { includeEpisodeFile?: boolean } = {}
+	): Promise<Record<string, unknown>[]> {
+		const params = new URLSearchParams({ seriesId: String(seriesId) });
+		if (options.includeEpisodeFile) params.set('includeEpisodeFile', 'true');
+		return this.raw('GET', `/episode?${params.toString()}`);
 	}
 
 	async queue(options: { includeSeries?: boolean } = {}): Promise<Record<string, unknown>[]> {

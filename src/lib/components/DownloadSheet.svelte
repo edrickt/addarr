@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { modal } from '$lib/actions/modal';
 	import type { DownloadDetail } from '$lib/arr/downloads';
+	import type { EpisodeFileInfo, MediaFiles, SeasonFiles } from '$lib/arr/files';
 	import {
 		formatBytes,
 		formatTimeLeft,
@@ -25,6 +27,82 @@
 			(item.size != null && item.size > 0 && downloaded != null) ||
 			item.episodes != null
 	);
+
+	let files = $state<MediaFiles | null>(null);
+	let filesLoading = $state(false);
+	let filesError = $state<string | null>(null);
+	let filesKey = '';
+	let filesSeq = 0;
+
+	// Only a real identity/state change should refetch. Parent polls replace
+	// the item object even when these values are unchanged.
+	const requestKey = $derived(`${item.kind}:${item.id ?? ''}:${item.state}`);
+
+	async function loadFiles(key: string) {
+		const id = item.id;
+		if (id == null) {
+			filesSeq++;
+			files = null;
+			filesLoading = false;
+			filesError = null;
+			filesKey = '';
+			return;
+		}
+
+		if (key === filesKey) return;
+		filesKey = key;
+		const seq = ++filesSeq;
+		files = null;
+		filesError = null;
+		filesLoading = true;
+
+		try {
+			const res = await fetch(`/api/files/${item.kind}/${id}`, { cache: 'no-store' });
+			const data = await res.json().catch(() => ({}));
+			if (seq !== filesSeq) return;
+			if (!res.ok) {
+				filesError = typeof data.error === 'string' ? data.error : 'Could not load files';
+				return;
+			}
+			files = data as MediaFiles;
+		} catch {
+			if (seq === filesSeq) filesError = 'Could not load files';
+		} finally {
+			if (seq === filesSeq) filesLoading = false;
+		}
+	}
+
+	function retryFiles() {
+		filesKey = '';
+		loadFiles(requestKey);
+	}
+
+	$effect(() => {
+		// Refetch on identity or acquisition-state changes so a download that
+		// just finished reveals its file without reopening the sheet.
+		loadFiles(requestKey);
+	});
+
+	onDestroy(() => {
+		filesSeq++;
+	});
+
+	function fileMeta(file: { quality: string | null; resolution: string | null; size: number | null }): string {
+		const quality = file.quality ?? file.resolution;
+		const parts = [quality, file.size != null ? formatBytes(file.size) : null].filter(
+			(part): part is string => !!part
+		);
+		return parts.length > 0 ? parts.join(' · ') : '—';
+	}
+
+	function episodeMeta(episode: EpisodeFileInfo): string {
+		return episode.quality ?? episode.resolution ?? '—';
+	}
+
+	function seasonMeta(season: SeasonFiles): string {
+		const count = `${season.episodes.length} ${season.episodes.length === 1 ? 'episode' : 'episodes'}`;
+		return season.totalSize != null ? `${count} · ${formatBytes(season.totalSize)}` : count;
+	}
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
@@ -108,6 +186,48 @@
 					</div>
 				{/if}
 			</dl>
+		{/if}
+
+		{#if item.id != null}
+			<section class="files-section" aria-labelledby="files-heading">
+				<h3 id="files-heading">Files on disk</h3>
+
+				{#if filesLoading}
+					<p class="hint" role="status">Loading files…</p>
+				{:else if filesError}
+					<p class="msg error" role="alert">
+						{filesError}
+						<button class="secondary retry-files" onclick={retryFiles}>Retry</button>
+					</p>
+				{:else if files && files.fileCount === 0}
+					<p class="hint" role="status">No files on disk yet.</p>
+				{:else if files?.kind === 'movie' && files.movie}
+					<div class="file-row">
+						<span>Movie file</span>
+						<span class="file-meta">{fileMeta(files.movie)}</span>
+					</div>
+				{:else if files?.kind === 'series' && files.seasons.length > 0}
+					<div class="season-scroll">
+						{#each files.seasons as season (season.seasonNumber)}
+							<div class="season">
+								<div class="season-head">
+									<span>{season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`}</span>
+									<span class="mono">{seasonMeta(season)}</span>
+								</div>
+								<ul class="episode-list">
+									{#each season.episodes as episode (`${season.seasonNumber}:${episode.episodeNumber}`)}
+										<li>
+											<span class="ep-code mono">E{String(episode.episodeNumber).padStart(2, '0')}</span>
+											<span class="ep-title">{episode.title ?? 'Episode'}</span>
+											<span class="ep-meta">{episodeMeta(episode)}</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
 		{/if}
 
 		<p class="hint read-only">This view is read-only. Ask an admin to change or remove a download.</p>
@@ -238,6 +358,83 @@
 	.details dd {
 		margin: 0.15rem 0 0;
 		font-size: 0.9rem;
+	}
+	.files-section {
+		margin-top: 1.1rem;
+		padding-top: 0.9rem;
+		border-top: 1px solid var(--border);
+	}
+	.files-section h3 {
+		margin: 0 0 0.5rem;
+		color: var(--muted-foreground);
+		font-size: 0.72rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.file-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.4rem 0;
+		font-size: 0.85rem;
+	}
+	.file-meta {
+		color: var(--muted-foreground);
+		text-align: right;
+	}
+	.season + .season {
+		margin-top: 0.9rem;
+	}
+	.season-head {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.25rem;
+		font-size: 0.85rem;
+		font-weight: 450;
+	}
+	.season-head .mono {
+		color: var(--muted-foreground);
+		font-size: 0.75rem;
+	}
+	.episode-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.episode-list li {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		padding: 0.25rem 0;
+		border-bottom: 1px solid var(--border);
+		font-size: 0.82rem;
+	}
+	.episode-list li:last-child {
+		border-bottom: none;
+	}
+	.ep-code {
+		min-width: 2.2rem;
+		color: var(--muted-foreground);
+	}
+	.ep-title {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ep-meta {
+		color: var(--muted-foreground);
+		font-size: 0.75rem;
+		white-space: nowrap;
+	}
+	.retry-files {
+		margin-top: 0;
+		margin-left: 0.5rem;
+		padding: 0.2rem 0.6rem;
+		font-size: 0.75rem;
 	}
 	.read-only {
 		margin-top: 1rem;
