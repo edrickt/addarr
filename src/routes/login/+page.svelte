@@ -34,7 +34,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin sign in — Addarr</title>
+	<title>Addarr Admin Sign In</title>
 </svelte:head>
 
 <h1>Admin sign in</h1>

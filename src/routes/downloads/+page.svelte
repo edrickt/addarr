@@ -86,7 +86,7 @@
 </script>
 
 <svelte:head>
-	<title>Downloads — Addarr</title>
+	<title>Addarr Downloads</title>
 </svelte:head>
 
 <h1>Downloads</h1>

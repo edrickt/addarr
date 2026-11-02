@@ -66,7 +66,7 @@
 </script>
 
 <svelte:head>
-	<title>Activity — Addarr</title>
+	<title>Addarr Activity</title>
 </svelte:head>
 
 <h1>Activity log</h1>

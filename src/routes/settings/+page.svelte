@@ -178,7 +178,7 @@
 </script>
 
 <svelte:head>
-	<title>Settings — Addarr</title>
+	<title>Addarr Settings</title>
 </svelte:head>
 
 <h1>Settings</h1>

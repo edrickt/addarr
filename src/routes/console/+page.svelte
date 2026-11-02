@@ -283,7 +283,7 @@
 </script>
 
 <svelte:head>
-	<title>Console — Addarr</title>
+	<title>Addarr Console</title>
 </svelte:head>
 
 <svelte:window

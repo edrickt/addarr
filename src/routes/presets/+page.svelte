@@ -107,7 +107,7 @@
 </script>
 
 <svelte:head>
-	<title>Presets — Addarr</title>
+	<title>Addarr Presets</title>
 </svelte:head>
 
 <h1>Presets</h1>

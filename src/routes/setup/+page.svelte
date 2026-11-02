@@ -36,7 +36,7 @@
 </script>
 
 <svelte:head>
-	<title>Welcome — Addarr</title>
+	<title>Addarr Welcome</title>
 </svelte:head>
 
 <h1>Welcome to Addarr</h1>
