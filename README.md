@@ -1,8 +1,12 @@
-<img src="static/favicon.svg" alt="Addarr app icon" width="96" />
+<p align="center">
+  <img src="static/favicon.svg" width="128" alt="Addarr app icon">
+</p>
 
 # Addarr
 
 One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
+
+**1.0.0 · Node 22.18+ · Windows / macOS / Linux · MIT**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node >= 22.18](https://img.shields.io/badge/node-%3E%3D22.18-brightgreen.svg)](https://nodejs.org)
@@ -10,7 +14,7 @@ One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
 
 Non-technical household members search for a title and tap **Add**. Done. An admin defines exactly what "Add" means and gets deep, curated control over the *arr instances. The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side and never reach the client.
 
-## Contents
+<!-- Screenshot: capture pending — poster grid with Add button plus Downloads tab -->
 
 - [What it is for](#what-it-is-for)
 - [Features](#features)
@@ -20,13 +24,12 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 - [Sharing on your LAN](#sharing-on-your-lan)
 - [Configuration](#configuration)
 - [API](#api)
-- [Documentation](#documentation)
-- [Development](#development)
-- [Tech stack](#tech-stack)
+- [Docs](#docs)
+- [For developers](#for-developers)
 - [Security](#security)
 - [Contributing](#contributing)
-- [License and copyright](#license-and-copyright)
 - [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 ## What it is for
 
@@ -42,7 +45,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 - "In library" badge plus live acquisition status after adding: `queued → downloading → importing → available`, plus `paused`, `partial`, and attention states.
 - Poster progress bar with time-left and adaptive polling.
 - **Downloads tab.** A household-wide, read-only view of everything in flight across Radarr and Sonarr, grouped one row per title. Tapping a download, or an in-library search result, opens the same detail sheet with progress, ETA, size, and episode counts, plus what is already on disk: one file for a movie, or downloaded episodes grouped by season.
-- Mobile-friendly: large touch targets, safe-area support, no iOS focus zoom.
+Mobile-friendly: large touch targets, safe-area support, no iOS focus zoom.
 
 **Admin presets**
 
@@ -212,12 +215,12 @@ Internal API. The browser talks to these routes. Radarr/Sonarr keys never leave 
 
 See `PLAN.md` for the full architecture and milestone history.
 
-## Documentation
+## Docs
 
 - [`PLAN.md`](PLAN.md) covers architecture, decisions, and milestone history.
 - [`PRODUCT.md`](PRODUCT.md) covers users, positioning, capabilities, and brand commitments.
 
-## Development
+## For developers
 
 Prerequisites: Node.js 22.18+.
 
@@ -248,7 +251,7 @@ scripts/serve.mjs      production server entry
 data/addarr.db         SQLite data file (created at runtime, not checked in)
 ```
 
-## Tech stack
+### Tech stack
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -270,16 +273,16 @@ API keys are held server-side in SQLite and are never sent to the browser. The o
 
 Issues and pull requests are welcome. For bugs, include the server log (`npm run logs`), your OS and Node version (`node -v`), and the Radarr/Sonarr versions from Settings. For features, a short description of the member vs admin behavior helps more than a patch alone.
 
-## License and copyright
+## Acknowledgements
+
+- [Radarr](https://radarr.video) and [Sonarr](https://sonarr.tv) for the backends Addarr fronts.
+- [SvelteKit](https://kit.svelte.dev), [Vite](https://vite.dev), and [Inter](https://rsms.me/inter/) for the app shell.
+- [Tiled](https://www.mapeditor.org) for README inspiration: per-OS prerequisites and a clean install-vs-compile split.
+
+## License
 
 Copyright 2026 Edrick Tamayo.
 
 Addarr is licensed under the MIT License. See [LICENSE](LICENSE).
 
 Third-party dependencies keep their own licenses; see `package.json` and `package-lock.json` for the current list.
-
-## Acknowledgements
-
-- [Radarr](https://radarr.video) and [Sonarr](https://sonarr.tv) for the backends Addarr fronts.
-- [SvelteKit](https://kit.svelte.dev), [Vite](https://vite.dev), and [Inter](https://rsms.me/inter/) for the app shell.
-- [Tiled](https://www.mapeditor.org) for README inspiration: per-OS prerequisites and a clean install-vs-compile split.
