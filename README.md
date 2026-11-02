@@ -14,7 +14,7 @@ One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
 
 Non-technical household members search for a title and tap **Add**. Done. An admin defines exactly what "Add" means and gets deep, curated control over the *arr instances. The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side and never reach the client.
 
-<!-- Screenshot: capture pending — poster grid with Add button plus Downloads tab -->
+<!-- Screenshot: capture pending, poster grid with Add button plus Downloads tab -->
 
 - [What it is for](#what-it-is-for)
 - [Features](#features)
@@ -114,7 +114,7 @@ Fedora: `sudo dnf install nodejs`. Any distro: [nvm](https://github.com/nvm-sh/n
 
 Any way you like, for example:
 
-- **Download a ZIP**: on the GitHub repo page, **Code → Download ZIP**, then extract it and `cd` into the extracted folder in your terminal.
+- **Download a ZIP.** On the GitHub repo page, **Code → Download ZIP**, then extract it and `cd` into the extracted folder in your terminal.
 - **Clone** (requires Git):
 
   ```sh
@@ -169,7 +169,7 @@ ADDARR_DB=/path/to/addarr.db npm start   # custom data file location
 
 1. Open `http://<host>:4545`. You land on **Setup**. Create the admin account (username + 4–6 digit PIN).
 2. **Settings** → connect Radarr and Sonarr (URL + API key). A capability probe verifies the version before saving, and a usable default preset is created automatically from the instance's first quality profile and root folder.
-3. Hand the household the URL; that is it. **Members need no account**: they search and add anonymously. Only signing into Settings/Console asks for the admin PIN (12-hour sessions, with a failed-attempt backoff against PIN guessing).
+3. Hand the household the URL; that is it. **Members need no account.** They search and add anonymously. Only signing into Settings/Console asks for the admin PIN (12-hour sessions, with a failed-attempt backoff against PIN guessing).
 
 ## Sharing on your LAN
 
