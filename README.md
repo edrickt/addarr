@@ -8,7 +8,7 @@ One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
 [![Node >= 22.18](https://img.shields.io/badge/node-%3E%3D22.18-brightgreen.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#setup-windows--macos--linux)
 
-Non-technical household members search for a title and tap **Add**. Done. An admin defines exactly what "Add" means and gets deep, curated control over the *arr instances. The browser only ever talks to Addarr — Radarr/Sonarr API keys live server-side and never reach the client.
+Non-technical household members search for a title and tap **Add**. Done. An admin defines exactly what "Add" means and gets deep, curated control over the *arr instances. The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side and never reach the client.
 
 ## Contents
 
@@ -19,7 +19,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 - [First run](#first-run)
 - [Sharing on your LAN](#sharing-on-your-lan)
 - [Configuration](#configuration)
-- [API surface](#api-surface)
+- [API](#api)
 - [Documentation](#documentation)
 - [Development](#development)
 - [Tech stack](#tech-stack)
@@ -32,7 +32,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 
 - **Household members (no account needed).** Type a title, see a poster grid, tap **Add**. Watch it move from `queued` to `downloading` to `available` with a progress bar and time-left on the poster. "In library" badges stop duplicate adds.
 - **The household admin.** Define what "Add" does per service with presets (quality profile, root folder, monitored, tags, minimum availability, search-on-add, plus Sonarr series type and season monitoring). Manage day-to-day acquisition from a curated console instead of the raw *arr UIs.
-- **A shared library, not a request queue.** Unlike Ombi/Overseerr there is no approval workflow — a household does not need gatekeeping. Unlike the raw *arr UIs there is no jargon or destructive power on the member surface.
+- **A shared library, not a request queue.** Unlike Ombi/Overseerr there is no approval workflow. A household does not need gatekeeping. Unlike the raw *arr UIs there is no jargon or destructive power in the member UI.
 
 ## Features
 
@@ -41,7 +41,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 - Search box with poster grid and one **Add** button, anonymous by design.
 - "In library" badge plus live acquisition status after adding: `queued → downloading → importing → available`, plus `paused`, `partial`, and attention states.
 - Poster progress bar with time-left and adaptive polling.
-- **Downloads tab:** a household-wide, read-only view of everything in flight across Radarr and Sonarr, grouped one row per title. Tapping a download — or an in-library search result — opens the same detail sheet with progress, ETA, size, and episode counts, plus what is already on disk: one file for a movie, or downloaded episodes grouped by season.
+- **Downloads tab.** A household-wide, read-only view of everything in flight across Radarr and Sonarr, grouped one row per title. Tapping a download, or an in-library search result, opens the same detail sheet with progress, ETA, size, and episode counts, plus what is already on disk: one file for a movie, or downloaded episodes grouped by season.
 - Mobile-friendly: large touch targets, safe-area support, no iOS focus zoom.
 
 **Admin presets**
@@ -65,7 +65,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 
 ## Principles
 
-- **One tap, zero jargon.** The member surface never shows an *arr concept the admin preset has not already decided.
+- **One tap, zero jargon.** The member UI never shows an *arr concept the admin preset has not already decided.
 - **The browser is untrusted.** Keys and write power stay server-side; every exposed route is curated, allow-listed, and read-only by default.
 - **Deep where the admin lives, shallow where members live.** Curated acquisition control beats raw API exposure; the read-only passthrough is the pressure valve, not the interface.
 - **One process, one file, zero ceremony.** `npm start` remains the entire install, deploy, and update story.
@@ -76,7 +76,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 ### Requirements
 
 - **Node.js 22.18 or newer** (an LTS release is fine), the only hard requirement. Check with `node -v`.
-- **Git**, *optional* — only needed if you want to clone or update via git. Downloading a ZIP works just as well.
+- **Git**, *optional.* It is only needed if you want to clone or update via git. Downloading a ZIP works just as well.
 
 No database server, no build tools, no containers. `npm start` handles everything else: installing dependencies, building, and starting the server in the background.
 
@@ -133,11 +133,11 @@ First run takes a minute; subsequent runs are faster. Updating later is the same
 
 | Platform | Icon | Where it lives |
 |---|---|---|
-| macOS | **Addarr** app | `~/Applications` — Launchpad, Spotlight, Dock |
+| macOS | **Addarr** app | `~/Applications`, Launchpad, Spotlight, Dock |
 | Linux | **Addarr** app | applications menu (`~/.local/share/applications`) |
 | Windows | **Addarr** shortcut + tray icon | Start menu, plus a notification-area icon while it runs |
 
-Click the **Addarr** icon to start the server if it isn't running and open it in your browser. That is the everyday way in; the terminal is only needed for installing and updating. On Windows the running server also gets an **Addarr icon in the notification area** (bottom-right, behind the `^` chevron on Windows 11 — drag it out to keep it visible): double-click to open, right-click for restart, stop, log, and quit.
+Click the **Addarr** icon to start the server if it isn't running and open it in your browser. That is the everyday way in. The terminal is only needed for installing and updating. On Windows the running server also gets an **Addarr icon in the notification area** (bottom-right, behind the `^` chevron on Windows 11. Drag it out to keep it visible). Double-click to open. Right-click for restart, stop, log, and quit.
 
 On Windows, allow Node.js through the Windows Defender firewall prompt if it appears (check both **Private** and **Public** networks if you will serve over LAN).
 
@@ -164,7 +164,7 @@ ADDARR_DB=/path/to/addarr.db npm start   # custom data file location
 
 ## First run
 
-1. Open `http://<host>:4545` — you are redirected to **Setup**: create the admin account (username + 4–6 digit PIN).
+1. Open `http://<host>:4545`. You land on **Setup**. Create the admin account (username + 4–6 digit PIN).
 2. **Settings** → connect Radarr and Sonarr (URL + API key). A capability probe verifies the version before saving, and a usable default preset is created automatically from the instance's first quality profile and root folder.
 3. Hand the household the URL; that is it. **Members need no account**: they search and add anonymously. Only signing into Settings/Console asks for the admin PIN (12-hour sessions, with a failed-attempt backoff against PIN guessing).
 
@@ -175,11 +175,11 @@ By default Addarr binds to `localhost` only, so nothing else on the network can 
 - becomes reachable from other devices at `http://<your-machine-ip>:4545` (the address is printed in the startup log), and
 - broadcasts itself over mDNS/Bonjour as **"Addarr"**, so it shows up in network discovery (for example Safari's Bonjour list or an Avahi browser).
 
-Enabling the setting takes effect for discovery immediately; if the server was started in localhost-only mode, one restart is needed to open the network bind — the app tells you when that is the case.
+Enabling the setting takes effect for discovery immediately. If the server was started in localhost-only mode, one restart is needed to open the network bind. The app tells you when that is the case.
 
 For headless setups you can also force it at startup: `npm start -- --lan` (or `ADDARR_LAN=1`), which overrides the in-app setting. `HOST=<addr>` binds a specific interface. Both are baked into the background service, so re-run `npm start` without them to hand control back to the in-app toggle. If mDNS is blocked on your network (some VPNs/containers), Addarr still runs; discovery just will not work.
 
-**Tailscale note:** with "Share on LAN" on, Addarr listens on `0.0.0.0`, so it is also reachable over your Tailnet — and the startup log used to lead with the `100.x` Tailscale address. It now lists the physical LAN address first (Tailscale last). To keep Addarr off the Tailnet entirely, bind just your LAN interface: `HOST=192.168.1.x npm start` (use your machine's LAN IP).
+**Tailscale note.** With "Share on LAN" on, Addarr listens on `0.0.0.0`, so it is also reachable over your Tailnet. The startup log used to lead with the `100.x` Tailscale address. It now lists the physical LAN address first, Tailscale last. To keep Addarr off the Tailnet entirely, bind just your LAN interface: `HOST=192.168.1.x npm start` (use your machine's LAN IP).
 
 ## Configuration
 
@@ -194,9 +194,9 @@ Data (users, sessions, connections, presets, activity log) lives in one SQLite f
 
 Values passed to `npm start` are baked into the installed background service. Re-run `npm start` (with or without them) to change what is baked in.
 
-## API surface
+## API
 
-Internal API — the browser talks to these routes; Radarr/Sonarr keys never leave the server.
+Internal API. The browser talks to these routes. Radarr/Sonarr keys never leave the server.
 
 | Route | Who | Does |
 |---|---|---|
@@ -214,8 +214,8 @@ See `PLAN.md` for the full architecture and milestone history.
 
 ## Documentation
 
-- [`PLAN.md`](PLAN.md) — architecture, decisions, and milestone history.
-- [`PRODUCT.md`](PRODUCT.md) — users, positioning, capabilities, and brand commitments.
+- [`PLAN.md`](PLAN.md) covers architecture, decisions, and milestone history.
+- [`PRODUCT.md`](PRODUCT.md) covers users, positioning, capabilities, and brand commitments.
 
 ## Development
 

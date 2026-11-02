@@ -18,7 +18,7 @@ Addarr is a thin, safe front door to Radarr and Sonarr. Members type a title, se
 
 ## Positioning
 
-Not Ombi/Overseerr (no approval/request workflow — a household doesn't need gatekeeping) and not the raw *arr UIs (jargon, destructive power). The mechanism a neighbor can't truthfully copy: **one-tap adds whose entire behavior is preset-defined by the admin, with the *arr API keys held server-side and only a read-only, allow-listed passthrough exposed**: deep admin power without ever handing the browser (or the household) the keys to a destructive API.
+Not Ombi/Overseerr. There is no approval/request workflow. A household does not need gatekeeping. It is not the raw *arr UIs either, with their jargon and destructive power. The mechanism a neighbor cannot truthfully copy is one-tap adds whose entire behavior is preset-defined by the admin, with the *arr API keys held server-side and only a read-only, allow-listed passthrough exposed. That gives deep admin power without ever handing the browser (or the household) the keys to a destructive API.
 
 ## Operating Context
 
@@ -30,12 +30,12 @@ Not Ombi/Overseerr (no approval/request workflow — a household doesn't need ga
 
 ## Capabilities and Constraints
 
-- **Member mode:** search → poster grid → one Add button using the default preset; "In library ✓" badge; polled status badge after adding. Lookup responses are trimmed server-side so *arr internals never leak.
-- **Admin presets:** quality profile, root folder, monitored, tags, minimum availability, search-on-add, (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
-- **Operations console:** curated screens only, with typed-confirmation deletes and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`); no free-form commands. Read-only passthrough (`GET /arrapi/...`) blocks all write verbs structurally.
-- **Auth:** admin PIN login, 12-hour session; members anonymous; activity log records who added what (attribution is a known gap for anonymous adds; see open decisions).
-- **Hard constraints:** API keys never reach the client; no raw write passthrough; no internet exposure; no media-server auth integration; no legacy *arr API v2.
-- **Open decisions:** whether adds should eventually support member-facing preset choice or 4K instance routing (services table already supports it); how (or whether) to attribute anonymous adds in the activity log beyond IP.
+- **Member mode.** Search → poster grid → one Add button using the default preset; "In library ✓" badge; polled status badge after adding. Lookup responses are trimmed server-side so *arr internals never leak.
+- **Admin presets.** Quality profile, root folder, monitored, tags, minimum availability, search-on-add, (Sonarr) series type + season monitoring policy. The default preset powers the member Add button.
+- **Operations console.** Curated screens only, with typed-confirmation deletes and hand-picked commands (`MoviesSearch`, `SeriesSearch`, `EpisodesSearch`, `RefreshMonitoredDownloads`); no free-form commands. Read-only passthrough (`GET /arrapi/...`) blocks all write verbs structurally.
+- **Auth.** Admin PIN login, 12-hour session; members anonymous; activity log records who added what (attribution is a known gap for anonymous adds; see open decisions).
+- **Hard constraints.** API keys never reach the client; no raw write passthrough; no internet exposure; no media-server auth integration; no legacy *arr API v2.
+- **Open decisions.** Whether adds should eventually support member-facing preset choice or 4K instance routing (services table already supports it); how (or whether) to attribute anonymous adds in the activity log beyond IP.
 
 ## Brand Commitments
 
@@ -49,7 +49,7 @@ Not Ombi/Overseerr (no approval/request workflow — a household doesn't need ga
 
 ## Product Principles
 
-1. **One tap, zero jargon.** The member surface must never show an *arr concept, credential, or decision that the admin preset hasn't already made.
+1. **One tap, zero jargon.** The member UI must never show an *arr concept, credential, or decision that the admin preset hasn't already made.
 2. **The browser is untrusted.** Keys and write power stay server-side; every exposed route is curated, allow-listed, and read-only by default.
 3. **Deep where the admin lives, shallow where members live.** Curated acquisition control beats raw API exposure; the read-only passthrough is the pressure valve, not the interface.
 4. **One process, one file, zero ceremony.** `npm start` must remain the entire install, deploy, and update story.
