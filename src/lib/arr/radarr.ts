@@ -1,6 +1,6 @@
-import { ArrClient } from './client.js';
-import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.js';
-import { movieStatus } from './status.js';
+import { ArrClient } from './client.ts';
+import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.ts';
+import { movieStatus } from './status.ts';
 
 /** Radarr API v3 adapter. Verified field names against Radarr source:
  *  MovieLookupController (GET /movie/lookup?term=), MovieController (POST /movie),

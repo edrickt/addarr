@@ -28,24 +28,33 @@ export const GET: RequestHandler = async ({ params }) => {
 		if (client instanceof RadarrClient) {
 			const rows = queue.filter((q) => q.movieId === id);
 			if (rows.length > 0) return json(aggregateQueue(rows));
-			// Item not in *arr (404) → treat like "nothing known yet".
-			const movie = await client.movie(id).catch(() => null);
-			if (!movie) return json({ state: 'waiting' });
-			return json(movieStatus(movie, []));
+			try {
+				const movie = await client.movie(id);
+				return json(movieStatus(movie, []));
+			} catch (err) {
+				if (err instanceof ArrError && err.status === 404) return json({ state: 'waiting' });
+				throw err;
+			}
 		}
 
 		if (client instanceof SonarrClient) {
 			const rows = queue.filter((q) => q.seriesId === id);
-			const series = await client.series(id).catch(() => null);
-			if (!series) return json({ state: 'waiting' });
-			return json(seriesStatus(series, rows));
+			try {
+				const series = await client.series(id);
+				return json(seriesStatus(series, rows));
+			} catch (err) {
+				if (err instanceof ArrError && err.status === 404) return json({ state: 'waiting' });
+				throw err;
+			}
 		}
 
 		return json({ error: 'Unknown service adapter' }, { status: 500 });
 	} catch (err) {
 		if (err instanceof ArrError) {
-			return json({ error: err.message }, { status: err.status === 502 ? 502 : 400 });
+			console.error(`[status] ${kind}/${id} upstream failure:`, err.message);
+			return json({ error: 'The library is not responding right now' }, { status: 502 });
 		}
+		console.error(`[status] ${kind}/${id} failed:`, err);
 		return json({ error: 'Status check failed' }, { status: 500 });
 	}
 };

@@ -51,14 +51,26 @@ function validate(input: PresetInput): string | null {
 	if (input.name !== undefined && (typeof input.name !== 'string' || !input.name.trim())) {
 		return 'name is required';
 	}
-	if (input.qualityProfileId !== undefined && !Number.isInteger(input.qualityProfileId)) {
-		return 'qualityProfileId must be an integer';
+	if (input.qualityProfileId !== undefined && (!Number.isInteger(input.qualityProfileId) || input.qualityProfileId <= 0)) {
+		return 'qualityProfileId must be a positive integer';
 	}
-	if (input.rootFolderPath !== undefined && typeof input.rootFolderPath !== 'string') {
-		return 'rootFolderPath must be a string';
+	if (input.rootFolderPath !== undefined && (typeof input.rootFolderPath !== 'string' || !input.rootFolderPath.trim())) {
+		return 'rootFolderPath must be a non-empty string';
 	}
-	if (input.tags !== undefined && !Array.isArray(input.tags)) {
-		return 'tags must be an array of tag ids';
+	if (input.tags !== undefined && (!Array.isArray(input.tags) || !input.tags.every((n) => Number.isInteger(n) && n > 0))) {
+		return 'tags must be an array of positive tag ids';
+	}
+	if (input.monitored !== undefined && typeof input.monitored !== 'boolean') {
+		return 'monitored must be a boolean';
+	}
+	if (input.searchOnAdd !== undefined && typeof input.searchOnAdd !== 'boolean') {
+		return 'searchOnAdd must be a boolean';
+	}
+	if (input.isDefault !== undefined && typeof input.isDefault !== 'boolean') {
+		return 'isDefault must be a boolean';
+	}
+	if (input.minimumAvailability !== undefined && input.minimumAvailability !== null && typeof input.minimumAvailability !== 'string') {
+		return 'minimumAvailability must be a string';
 	}
 	if (
 		input.seriesTypeDefault !== undefined &&
@@ -110,7 +122,9 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		return json({ error: 'name, qualityProfileId and rootFolderPath are required' }, { status: 400 });
 	}
 
-	db.prepare(
+	let insert: { lastInsertRowid: unknown; changes: unknown };
+	try {
+		insert = db.prepare(
 		`INSERT INTO presets (
 			service_id, name, is_default, quality_profile_id, root_folder_path,
 			monitored, tags_json, minimum_availability, search_on_add,
@@ -127,9 +141,16 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		body.searchOnAdd === false ? 0 : 1,
 		parsed.service === 'sonarr' ? body.seriesTypeDefault ?? 'standard' : null,
 		parsed.service === 'sonarr' ? body.seasonMonitorPolicy ?? 'all' : null
-	);
+		);
+	} catch (err) {
+		if (String(err instanceof Error ? err.message : err).includes('UNIQUE')) {
+			return json({ error: 'A preset with that name already exists for this service' }, { status: 409 });
+		}
+		throw err;
+	}
 
-	const created = listPresets(parsed.serviceId).at(-1)!;
+	const createdId = Number(insert.lastInsertRowid);
+	const created = getPreset(createdId)!;
 	// Every service must always have a default preset.
 	if (body.isDefault || !listPresets(parsed.serviceId).some((p) => p.is_default === 1)) {
 		setDefaultPreset(parsed.serviceId, created.id);
@@ -163,25 +184,37 @@ export const PATCH: RequestHandler = async ({ request, url, locals }) => {
 	const invalid = validate(body);
 	if (invalid) return json({ error: invalid }, { status: 400 });
 
-	if (body.name !== undefined) db.prepare(`UPDATE presets SET name = ? WHERE id = ?`).run(body.name.trim(), id);
-	if (body.qualityProfileId !== undefined)
-		db.prepare(`UPDATE presets SET quality_profile_id = ? WHERE id = ?`).run(body.qualityProfileId, id);
-	if (body.rootFolderPath !== undefined)
-		db.prepare(`UPDATE presets SET root_folder_path = ? WHERE id = ?`).run(body.rootFolderPath, id);
-	if (body.monitored !== undefined)
-		db.prepare(`UPDATE presets SET monitored = ? WHERE id = ?`).run(body.monitored ? 1 : 0, id);
-	if (body.tags !== undefined)
-		db.prepare(`UPDATE presets SET tags_json = ? WHERE id = ?`).run(JSON.stringify(body.tags), id);
-	if (body.minimumAvailability !== undefined)
-		db.prepare(`UPDATE presets SET minimum_availability = ? WHERE id = ?`).run(body.minimumAvailability, id);
-	if (body.searchOnAdd !== undefined)
-		db.prepare(`UPDATE presets SET search_on_add = ? WHERE id = ?`).run(body.searchOnAdd ? 1 : 0, id);
-	if (body.seriesTypeDefault !== undefined && parsed.service === 'sonarr')
-		db.prepare(`UPDATE presets SET series_type_default = ? WHERE id = ?`).run(body.seriesTypeDefault ?? 'standard', id);
-	if (body.seasonMonitorPolicy !== undefined && parsed.service === 'sonarr')
-		db.prepare(`UPDATE presets SET season_monitor_policy = ? WHERE id = ?`).run(body.seasonMonitorPolicy ?? 'all', id);
-
-	if (body.isDefault) setDefaultPreset(parsed.serviceId, id);
+	try {
+		db.exec('BEGIN');
+		if (body.name !== undefined) db.prepare(`UPDATE presets SET name = ? WHERE id = ?`).run(body.name.trim(), id);
+		if (body.qualityProfileId !== undefined)
+			db.prepare(`UPDATE presets SET quality_profile_id = ? WHERE id = ?`).run(body.qualityProfileId, id);
+		if (body.rootFolderPath !== undefined)
+			db.prepare(`UPDATE presets SET root_folder_path = ? WHERE id = ?`).run(body.rootFolderPath, id);
+		if (body.monitored !== undefined)
+			db.prepare(`UPDATE presets SET monitored = ? WHERE id = ?`).run(body.monitored ? 1 : 0, id);
+		if (body.tags !== undefined)
+			db.prepare(`UPDATE presets SET tags_json = ? WHERE id = ?`).run(JSON.stringify(body.tags), id);
+		if (body.minimumAvailability !== undefined)
+			db.prepare(`UPDATE presets SET minimum_availability = ? WHERE id = ?`).run(body.minimumAvailability, id);
+		if (body.searchOnAdd !== undefined)
+			db.prepare(`UPDATE presets SET search_on_add = ? WHERE id = ?`).run(body.searchOnAdd ? 1 : 0, id);
+		if (body.seriesTypeDefault !== undefined && parsed.service === 'sonarr')
+			db.prepare(`UPDATE presets SET series_type_default = ? WHERE id = ?`).run(body.seriesTypeDefault ?? 'standard', id);
+		if (body.seasonMonitorPolicy !== undefined && parsed.service === 'sonarr')
+			db.prepare(`UPDATE presets SET season_monitor_policy = ? WHERE id = ?`).run(body.seasonMonitorPolicy ?? 'all', id);
+		if (body.isDefault) {
+			db.prepare(`UPDATE presets SET is_default = 0 WHERE service_id = ?`).run(parsed.serviceId);
+			db.prepare(`UPDATE presets SET is_default = 1 WHERE id = ?`).run(id);
+		}
+		db.exec('COMMIT');
+	} catch (err) {
+		try { db.exec('ROLLBACK'); } catch { /* ignore */ }
+		if (String(err instanceof Error ? err.message : err).includes('UNIQUE')) {
+			return json({ error: 'A preset with that name already exists for this service' }, { status: 409 });
+		}
+		throw err;
+	}
 
 	logActivity({
 		userId: locals.user!.id,

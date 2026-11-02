@@ -177,14 +177,18 @@
 		text: string,
 		isError = false,
 		retry: (() => void) | null = null,
-		duration = isError ? 8000 : 4000
+		duration = isError ? 0 : 4000
 	) {
+		// Single announcement channel: the visual toast is aria-hidden; the sr-only live region announces (F-UI-05).
+		announce = text;
 		toast = text;
 		toastIsError = isError;
 		toastRetry = retry;
-		setTimeout(() => {
-			if (toast === text) toast = null;
-		}, duration);
+		if (duration > 0) {
+			setTimeout(() => {
+				if (toast === text) toast = null;
+			}, duration);
+		}
 	}
 
 	// Poll the add-status badge for recently added items (decision D4).
@@ -203,24 +207,43 @@
 					!STATIC_MEMBER_STATES.has(r.watchStatus)
 				);
 			if (watching.length > 0) {
+				// Batch: one queue fetch per service per tick (F-MEMBER-07).
+				let batch: { movies?: Record<string, { state: string; progress?: number | null; timeLeftSeconds?: number | null; size?: number | null; sizeLeft?: number | null; episodes?: { have: number; total: number } | null }>; series?: Record<string, { state: string; progress?: number | null; timeLeftSeconds?: number | null; size?: number | null; sizeLeft?: number | null; episodes?: { have: number; total: number } | null }> } | null = null;
+				try {
+					const qs = new URLSearchParams();
+					const mIds = watching.filter((c) => c.kind === 'movie').map((c) => String(c.watchId));
+					const sIds = watching.filter((c) => c.kind === 'series').map((c) => String(c.watchId));
+					if (mIds.length) qs.set('movies', mIds.join(','));
+					if (sIds.length) qs.set('series', sIds.join(','));
+					const bRes = await fetch(`/api/status/batch?${qs.toString()}`);
+					if (bRes.ok) batch = await bRes.json();
+				} catch {
+					/* fallback to per-card below */
+				}
 				for (const card of watching) {
 					try {
-						const res = await fetch(`/api/status/${card.kind}/${card.watchId}`);
-						if (!res.ok) continue;
-						const data = await res.json();
-						if (data.state !== card.watchStatus) {
+						const bData = card.kind === 'movie' ? batch?.movies?.[String(card.watchId)] : batch?.series?.[String(card.watchId)];
+						let data = bData as { state: string; progress?: number | null; timeLeftSeconds?: number | null; size?: number | null; sizeLeft?: number | null; episodes?: { have: number; total: number } | null } | undefined;
+						if (!data) {
+							const res = await fetch(`/api/status/${card.kind}/${card.watchId}`);
+							if (!res.ok) continue;
+							data = (await res.json()) as NonNullable<typeof data>;
+						}
+						if (!data) continue;
+						const state = data.state as NonNullable<typeof card.watchStatus>;
+						if (state !== card.watchStatus) {
 							announce =
-								data.state === 'available'
+								state === 'available'
 									? `${card.title} is in the library now`
 									: `${card.title}: still on its way`;
 						}
-						card.watchStatus = data.state;
+						card.watchStatus = state;
 						card.watchProgress = data.progress ?? null;
 						card.watchTimeLeft = data.timeLeftSeconds ?? null;
 						card.watchSize = data.size ?? null;
 						card.watchSizeLeft = data.sizeLeft ?? null;
 						card.watchEpisodes = data.episodes ?? null;
-						if (data.state === 'available') {
+						if (state === 'available') {
 							card.inLibrary = true;
 							// The emotional peak — give it a longer window on screen.
 							showToast(`“${card.title}” is available`, false, null, 8000);
@@ -393,6 +416,7 @@
 					<button
 						onclick={() => add(card)}
 						disabled={busyId === `${card.kind}:${card.sourceId}`}
+						aria-label={`Add ${card.title}`}
 					>
 						{busyId === `${card.kind}:${card.sourceId}` ? 'Adding…' : 'Add'}
 					</button>
@@ -407,8 +431,11 @@
 {/if}
 
 {#if toast}
-	<div class="toast" class:error={toastIsError} role={toastIsError ? 'alert' : 'status'}>
+	<div class="toast" class:error={toastIsError} aria-hidden="true">
 		{toast}
+		{#if !toastRetry && toastIsError}
+			<button class="toast-retry" onclick={() => (toast = null)}>Dismiss</button>
+		{/if}
 		{#if toastRetry}
 			<button
 				class="toast-retry"

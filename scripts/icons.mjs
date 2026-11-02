@@ -10,7 +10,7 @@
 //   addarr.ico          Windows Start Menu shortcut
 //   AppIcon.icns        macOS .app bundle (needs iconutil, present on macOS)
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -239,14 +239,16 @@ function pngFor(size, inset) {
  */
 export function ensureIcons() {
 	mkdirSync(ICON_DIR, { recursive: true });
+	const scriptMtime = (() => { try { return statSync(fileURLToPath(import.meta.url)).mtimeMs; } catch { return 0; } })();
+	const fresh = (f) => { try { return existsSync(f) && statSync(f).mtimeMs >= scriptMtime; } catch { return false; } };
 
 	const pngPath = join(ICON_DIR, 'addarr-256.png');
-	writeFileSync(pngPath, pngFor(256, 0.03));
+	if (!fresh(pngPath)) writeFileSync(pngPath, pngFor(256, 0.03));
 
 	// Small PNG for the Windows tray: System.Drawing.Icon cannot be trusted with
 	// PNG-compressed .ico entries, so the tray builds an HICON from this instead.
 	const png32Path = join(ICON_DIR, 'addarr-32.png');
-	writeFileSync(png32Path, pngFor(32, 0.03));
+	if (!fresh(png32Path)) writeFileSync(png32Path, pngFor(32, 0.03));
 
 	let icnsPath = null;
 	if (process.platform === 'darwin' && hasCommand('iconutil')) {
@@ -257,7 +259,7 @@ export function ensureIcons() {
 	let icoPath = null;
 	try {
 		const target = join(ICON_DIR, 'addarr.ico');
-		writeFileSync(
+		if (!fresh(target)) writeFileSync(
 			target,
 			buildIco([64, 48, 32, 16].map((size) => ({ size, png: pngFor(size, 0.03) })))
 		);

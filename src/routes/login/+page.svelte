@@ -1,14 +1,9 @@
 <script lang="ts">
 	let { data } = $props();
 
-	let username = $state<string | null>(null);
+	let username = $state('');
 	let pin = $state('');
-	const selected = $derived(username ?? data.usernames[0] ?? '');
-
-	// Pre-select the first admin once the option list hydrates.
-	$effect(() => {
-		if (username === null && data.usernames.length > 0) username = data.usernames[0];
-	});
+	const selected = $derived(username.trim());
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
@@ -46,17 +41,13 @@
 <p class="hint">Only for managing settings and the console. Searching and adding needs no account.</p>
 
 <div class="card login">
-	{#if data.usernames.length === 0}
+	{#if !data.hasAdmin}
 		<p class="hint">No admin account exists yet.</p>
 		<a class="button-link" href="/setup">Run first-time setup</a>
 	{:else}
 		<form onsubmit={submit}>
-			<label for="login-user">Admin</label>
-			<select id="login-user" bind:value={username}>
-				{#each data.usernames as name (name)}
-					<option value={name}>{name}</option>
-				{/each}
-			</select>
+			<label for="login-user">Admin username</label>
+			<input id="login-user" type="text" bind:value={username} autocomplete="username" placeholder="admin" />
 			<label for="login-pin">PIN</label>
 			<input
 				id="login-pin"

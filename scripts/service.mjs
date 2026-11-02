@@ -20,6 +20,8 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
 	chmodSync,
+	renameSync,
+	statSync,
 	copyFileSync,
 	existsSync,
 	mkdirSync,
@@ -44,8 +46,27 @@ const IS_WIN = process.platform === 'win32';
 
 const args = process.argv.slice(2);
 const command = args.find((a) => !a.startsWith('-')) ?? 'start';
-const port = Number(process.env.PORT) || 4545;
-const url = `http://localhost:${port}`;
+const SERVICE_JSON = join(ROOT, 'data', 'service.json');
+function savedConfig() {
+	try { return JSON.parse(readFileSync(SERVICE_JSON, 'utf8')); } catch { return null; }
+}
+function persistConfig() {
+	try {
+		writeFileSync(SERVICE_JSON, JSON.stringify({ port, host: process.env.HOST ?? '0.0.0.0', dbPath: process.env.ADDARR_DB ?? join(ROOT, 'data', 'addarr.db'), root: ROOT, savedAt: new Date().toISOString() }, null, 2));
+	} catch { /* best-effort */ }
+}
+const port = Number(process.env.PORT ?? savedConfig()?.port) || 4545;
+function effectiveHost() {
+	const h = process.env.HOST ?? savedConfig()?.host ?? '0.0.0.0';
+	return h;
+}
+function bracketHost(h) { return h.includes(':') && !h.startsWith('[') ? `[${h}]` : h; }
+function probeBase() {
+	const h = effectiveHost();
+	const loopback = h === '0.0.0.0' || h === '::' ? 'localhost' : h;
+	return `http://${bracketHost(loopback)}:${port}`;
+}
+const url = probeBase();
 const LABEL = 'com.addarr.server';
 const UNIT = 'addarr.service';
 
@@ -142,12 +163,13 @@ function plistValue(value) {
 /** User-facing overrides baked into the launcher, on every platform. */
 function overrideEnv() {
 	const env = { PORT: String(port) };
-	if (args.includes('--lan')) env.ADDARR_LAN = '1';
 	for (const key of ['HOST', 'ADDARR_LAN', 'ADDARR_DB']) {
 		const value = process.env[key];
 		if (!value) continue;
 		env[key] = key === 'ADDARR_DB' && !isAbsolute(value) ? resolve(process.cwd(), value) : value;
 	}
+	// Explicit --lan always wins, even over ADDARR_LAN=0 (F-SCRIPT-15).
+	if (args.includes('--lan')) env.ADDARR_LAN = '1';
 	return env;
 }
 
@@ -164,12 +186,28 @@ function serviceEnv() {
 	};
 }
 
+function rotateIfLarge(file, maxBytes = 5 * 1024 * 1024) {
+	try {
+		const s = statSync(file);
+		if (s.size > maxBytes) {
+			const bak = `${file}.1`;
+			try { rmSync(bak, { force: true }); } catch {}
+			try { renameSync(file, bak); } catch {}
+			writeFileSync(file, '');
+		}
+	} catch { /* missing file */ }
+}
+
 function ensureDataDir() {
-	mkdirSync(DATA_DIR, { recursive: true });
+	mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+	persistConfigSafe();
+	try { chmodSync(DATA_DIR, 0o700); } catch { /* Windows */ }
 	for (const file of [LOG_PATH, ERR_PATH, join(DATA_DIR, 'addarr-tray.log')]) {
 		if (!existsSync(file)) writeFileSync(file, '');
 	}
 }
+
+function persistConfigSafe() { try { persistConfig(); } catch { /* ignore */ } }
 
 function readPid() {
 	try {
@@ -272,7 +310,7 @@ LABEL="${LABEL}"
 DOMAIN="${macDomain()}"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 URL="${url}"
-NODE="${NODE}"
+NODE="${String(NODE).replace(/(["$`\\])/g, '\\$1')}"
 
 if ! /bin/launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
 	/bin/launchctl bootstrap "$DOMAIN" "$PLIST" >/dev/null 2>&1
@@ -349,7 +387,7 @@ function linuxWriteUnit() {
 	mkdirSync(dirname(LINUX_UNIT), { recursive: true });
 	const env = serviceEnv();
 	const envLines = Object.entries(env)
-		.map(([k, v]) => `Environment="${k}=${v}"`)
+		.map(([k, v]) => `Environment="${k}=${String(v).replace(/%/g, '%%').replace(/"/g, '\\"')}"`)
 		.join('\n');
 	writeFileSync(
 		LINUX_UNIT,
@@ -364,8 +402,8 @@ ExecStart="${NODE}" "${join(ROOT, 'scripts', 'serve.mjs')}"
 ${envLines}
 Restart=always
 RestartSec=2
-StandardOutput=append:${LOG_PATH}
-StandardError=append:${ERR_PATH}
+StandardOutput=append:"${LOG_PATH}"
+StandardError=append:"${ERR_PATH}"
 
 [Install]
 WantedBy=default.target
@@ -374,7 +412,8 @@ WantedBy=default.target
 }
 
 function linuxWriteLauncher() {
-	const { pngPath } = ensureIcons();
+	let pngPath = '';
+	try { ({ pngPath } = ensureIcons()); } catch (err) { console.warn(`Icons unavailable, continuing without them: ${err?.message ?? err}`); }
 	mkdirSync(dirname(LINUX_LAUNCH), { recursive: true });
 	mkdirSync(dirname(LINUX_ICON), { recursive: true });
 	mkdirSync(dirname(LINUX_APPS), { recursive: true });
@@ -482,7 +521,7 @@ function psQuote(value) {
 
 function winEnvLines() {
 	return Object.entries({ ...overrideEnv(), ADDARR_LOG: '1' })
-		.map(([key, value]) => `sh.Environment("PROCESS")("${key}") = "${value}"`)
+		.map(([key, value]) => `sh.Environment("PROCESS")("${key}") = "${String(value).replace(/"/g, '""')}"`)
 		.join('\n');
 }
 
@@ -751,6 +790,12 @@ function startService() {
 	}
 }
 
+function verifyStopped() {
+	const pid = platform?.running?.();
+	if (pid) { console.error(`Stop failed — Addarr still running (pid ${pid}).`); return false; }
+	return true;
+}
+
 function printStatus() {
 	if (!platform) {
 		console.log('Background service install is supported on macOS, Linux, and Windows.');
@@ -770,6 +815,7 @@ async function commandStart() {
 	if (!platform) {
 		console.log('No service manager on this platform — starting in the foreground instead.');
 		const child = spawn(NODE, [join(ROOT, 'scripts', 'serve.mjs')], { stdio: 'inherit' });
+		child.on('error', (err) => { console.error(`Failed to start server: ${err.message}`); process.exit(1); });
 		child.on('exit', (code) => process.exit(code ?? 0));
 		return;
 	}
@@ -842,9 +888,19 @@ function commandLogs() {
 	child.on('exit', (code) => process.exit(code ?? 0));
 }
 
+function refuseRoot() {
+	try {
+		if (typeof process.getuid === 'function' && process.getuid() === 0) {
+			console.error('Refusing to install as root — run npm start as your desktop user.');
+			process.exit(1);
+		}
+	} catch { /* ignore */ }
+}
+
 async function main() {
 	switch (command) {
 		case 'install': {
+			refuseRoot();
 			ensureDataDir();
 			if (!platform) {
 				console.log('Unsupported platform.');

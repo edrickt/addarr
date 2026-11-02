@@ -65,7 +65,7 @@
 
 	// Lightweight confirmation for lower-stakes removals (queue, exclusions,
 	// blocklist) — the typed-confirmation dialog stays reserved for library deletes.
-	type ConfirmTarget = { title: string; body?: string; qs: string; okText: string } | null;
+	type ConfirmTarget = { title: string; body?: string; path: Tab; qs: string; okText: string } | null;
 	let confirmTarget = $state<ConfirmTarget>(null);
 
 	let loadSeq = 0;
@@ -73,6 +73,8 @@
 	// Library pagination — a 1,000-item library must not render 4,000 buttons.
 	const LIB_PAGE_SIZE = 50;
 	let libPage = $state(1);
+	let histPage = $state(1);
+	let blockPage = $state(1);
 	const libItems = $derived(((data?.items as Item[]) ?? []) as Item[]);
 
 	async function load() {
@@ -80,7 +82,8 @@
 		loading = true;
 		msg = null;
 		try {
-			const res = await fetch(`/api/console/${tab}?service=${service}`, { cache: 'no-store' });
+			const pageQs = tab === 'history' ? `&page=${histPage}` : tab === 'blocklist' ? `&page=${blockPage}` : '';
+			const res = await fetch(`/api/console/${tab}?service=${service}${pageQs}`, { cache: 'no-store' });
 			const json = await res.json().catch(() => ({}));
 			if (seq !== loadSeq) return; // superseded by a newer tab/service switch
 			if (!res.ok) {
@@ -103,14 +106,16 @@
 		tab;
 		service;
 		libPage = 1;
+		histPage = 1;
+		blockPage = 1;
 		load();
 		loadSummary();
 	});
 
-	async function send(method: string, qs: string, body?: unknown, okText = 'Done') {
+	async function send(method: string, path: string, qs: string, body?: unknown, okText = 'Done') {
 		msg = null;
 		try {
-			const res = await fetch(`/api/console/${tab}?service=${service}${qs}`, {
+			const res = await fetch(`/api/console/${path}?service=${service}${qs}`, {
 				method,
 				headers: { 'Content-Type': 'application/json' },
 				body: body ? JSON.stringify(body) : undefined
@@ -129,6 +134,14 @@
 			msg = { kind: 'error', text: 'Request failed' };
 			return false;
 		}
+	}
+
+	function sendTab(method: string, qs: string, body?: unknown, okText = 'Done') {
+		return send(method, tab, qs, body, okText);
+	}
+
+	function sendCommand(body: unknown, okText = 'Done') {
+		return send('POST', 'command', '', body, okText);
 	}
 
 	function closeDialogs() {
@@ -158,12 +171,12 @@
 			tags: editTags
 		};
 		if (service === 'sonarr' && editItem.seasons) body.seasons = editSeasons;
-		send('PATCH', `&id=${editItem.id}`, body, 'Saved changes');
+		sendTab('PATCH', `&id=${editItem.id}`, body, 'Saved changes');
 	}
 
 	function doDelete() {
 		if (!deleteItem) return;
-		send(
+		sendTab(
 			'DELETE',
 			`&id=${deleteItem.id}&confirm=${encodeURIComponent(confirmText)}&deleteFiles=${deleteFiles ? 1 : 0}&addExclusion=${addExclusion ? 1 : 0}`,
 			undefined,
@@ -176,7 +189,7 @@
 			service === 'radarr'
 				? { name: 'MoviesSearch', ids: [item.id] }
 				: { name: 'SeriesSearch', ids: [item.id] };
-		send('POST', '', body, `Search started for “${item.title}”`);
+		sendCommand(body, `Search started for “${item.title}”`);
 	}
 
 	async function openEpisodes(item: Item) {
@@ -197,7 +210,7 @@
 	}
 
 	function searchEpisode(episodeId: number) {
-		send('POST', '', { name: 'EpisodesSearch', ids: [episodeId] }, 'Episode search started');
+		sendCommand({ name: 'EpisodesSearch', ids: [episodeId] }, 'Episode search started');
 	}
 
 	const SERIES_TYPE: Record<string, string> = {
@@ -231,13 +244,15 @@
 	let kpiSeq = 0;
 	async function loadSummary() {
 		const seq = ++kpiSeq;
+		const svc = service;
+		summary = null;
 		try {
-			const res = await fetch(`/api/console/summary?service=${service}`);
-			if (!res.ok) return;
+			const res = await fetch(`/api/console/summary?service=${svc}`);
+			if (!res.ok || seq !== kpiSeq || svc !== service) return;
 			const data = await res.json();
-			if (seq === kpiSeq) summary = data;
+			if (seq === kpiSeq && svc === service) summary = data;
 		} catch {
-			/* keep last values */
+			if (seq === kpiSeq && svc === service) summary = null;
 		}
 	}
 
@@ -313,7 +328,7 @@
 	</div>
 </div>
 
-{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : undefined}>{msg.text}</p>{/if}
+{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</p>{/if}
 {#if loading}<p class="hint">Loading…</p>{/if}
 
 {#if !loading && data}
@@ -331,11 +346,11 @@
 							<small>{item.detail}{#if item.seriesType} · {SERIES_TYPE[item.seriesType] ?? item.seriesType}{/if} · {item.monitored ? 'monitored' : 'unmonitored'}</small>
 						</div>
 						<div class="actions">
-							<button class="secondary" onclick={() => searchItem(item)} disabled={loading}>Search</button>
+							<button class="secondary" aria-label={`Search for ${item.title}`} onclick={() => searchItem(item)} disabled={loading}>Search</button>
 							{#if service === 'sonarr'}
 								<button class="secondary" onclick={() => openEpisodes(item)} disabled={loading}>Episodes</button>
 							{/if}
-							<button class="secondary" onclick={() => openEdit(item)} disabled={loading}>Edit</button>
+							<button class="secondary" aria-label={`Edit ${item.title}`} onclick={() => openEdit(item)} disabled={loading}>Edit</button>
 							<button class="secondary danger" onclick={() => { deleteItem = item; confirmText = ''; }} disabled={loading}>
 								Delete
 							</button>
@@ -370,11 +385,12 @@
 						<div class="actions">
 							<button
 								class="secondary danger"
-								onclick={() => {
+								aria-label={`Remove ${String(q.title ?? '')}`} onclick={() => {
 									confirmTarget = {
 										title: 'Remove from queue',
 										body: `Remove “${String(q.title ?? '')}” from the queue and delete it from the download client?`,
-										qs: `&id=${q.id}&removeFromClient=1`,
+										path: 'queue',
+										qs: `&id=${q.id}&removeFromClient=1&confirm=yes`,
 										okText: 'Removed from queue'
 									};
 								}}
@@ -402,6 +418,11 @@
 					<li><small>No history yet.</small></li>
 				{/each}
 			</ul>
+			<div class="pager">
+				<button class="secondary" disabled={histPage <= 1 || loading} onclick={() => { histPage--; load(); }}>Previous</button>
+				<span class="hint">Page {histPage}</span>
+				<button class="secondary" disabled={((data.items as unknown[]) ?? []).length < 25 || loading} onclick={() => { histPage++; load(); }}>Next</button>
+			</div>
 		</div>
 
 	<!-- EXCLUSIONS -->
@@ -414,11 +435,12 @@
 						<div class="actions">
 							<button
 								class="secondary danger"
-								onclick={() => {
+								aria-label={`Remove exclusion ${String(x.movieTitle ?? x.title ?? '')}`} onclick={() => {
 									confirmTarget = {
 										title: 'Remove exclusion',
+										path: 'exclusions',
 										body: `Allow “${String(x.movieTitle ?? x.title ?? x.tvdbId ?? 'this item')}” to be imported again?`,
-										qs: `&id=${x.id}`,
+										qs: `&id=${x.id}&confirm=yes`,
 										okText: 'Removed from import exclusions'
 									};
 								}}
@@ -437,15 +459,16 @@
 			<ul class="rows">
 				{#each (data.items as Record<string, unknown>[]) ?? [] as b (String(b.id))}
 					<li>
-						<div class="grow"><strong>{b.sourceTitle ?? b.title ?? '—'}</strong> <small><span class="mono">{when(b)}</span></small></div>
+						<div class="grow"><strong>{String(b.sourceTitle ?? b.title ?? '—')}</strong> <small><span class="mono">{when(b)}</span></small></div>
 						<div class="actions">
 							<button
 								class="secondary danger"
-								onclick={() => {
+								aria-label={`Remove ${String(b.sourceTitle ?? b.title ?? '')}`} onclick={() => {
 									confirmTarget = {
 										title: 'Remove from blocklist',
+										path: 'blocklist',
 										body: `Remove “${String(b.sourceTitle ?? b.title ?? 'this item')}” from the blocklist? It can be added again later.`,
-										qs: `&id=${b.id}`,
+										qs: `&id=${b.id}&confirm=yes`,
 										okText: 'Removed from blocklist'
 									};
 								}}
@@ -456,6 +479,11 @@
 					<li><small>Blocklist is empty.</small></li>
 				{/each}
 			</ul>
+			<div class="pager">
+				<button class="secondary" disabled={blockPage <= 1 || loading} onclick={() => { blockPage--; load(); }}>Previous</button>
+				<span class="hint">Page {blockPage}</span>
+				<button class="secondary" disabled={((data.items as unknown[]) ?? []).length < 25 || loading} onclick={() => { blockPage++; load(); }}>Next</button>
+			</div>
 		</div>
 
 	<!-- CALENDAR -->
@@ -477,7 +505,7 @@
 <!-- Global curated command -->
 <div class="card">
 	<h2>Commands</h2>
-	<button class="secondary" onclick={() => send('POST', '', { name: 'RefreshMonitoredDownloads' }, 'Refresh queued')}>
+	<button class="secondary" onclick={() => sendCommand({ name: 'RefreshMonitoredDownloads' }, 'Refresh queued')}>
 		Refresh monitored downloads
 	</button>
 	<p class="hint">Per-item Search buttons live in the Library tab. No free-form commands, by design.</p>
@@ -619,7 +647,7 @@
 		onconfirm={() => {
 			const t = confirmTarget;
 			confirmTarget = null;
-			if (t) send('DELETE', t.qs, undefined, t.okText);
+			if (t) send('DELETE', t.path, t.qs, undefined, t.okText);
 		}}
 		oncancel={() => (confirmTarget = null)}
 	/>

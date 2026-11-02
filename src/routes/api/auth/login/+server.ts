@@ -5,8 +5,11 @@ import {
 	getUserByUsername,
 	isValidPin,
 	isValidUsername,
+	logActivity,
+	pruneExpiredSessions,
 	verifyPin
 } from '$lib/server/auth';
+import { hashPin } from '$lib/server/auth';
 
 /** POST /api/auth/login — { username, pin } → session cookie. */
 
@@ -69,12 +72,22 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 	}
 
 	const user = getUserByUsername(body.username);
-	if (!user || user.disabled === 1 || !verifyPin(body.pin, user.pin_hash)) {
+	if (!user || user.disabled === 1) {
+		// Constant-time dummy verify so missing/disabled accounts cost the same as real ones (F-AUTH-03).
+		try { verifyPin(body.pin, hashPin('000000')); } catch { /* ignore */ }
 		recordFailure(key);
+		try { logActivity({ userId: null, serviceId: null, action: 'auth.login.failure', title: String(body.username ?? '') }); } catch { /* best-effort */ }
+		return json({ error: 'Wrong username or PIN' }, { status: 401 });
+	}
+	if (!verifyPin(body.pin, user.pin_hash)) {
+		recordFailure(key);
+		try { logActivity({ userId: user.id, serviceId: null, action: 'auth.login.failure', title: user.username }); } catch { /* best-effort */ }
 		return json({ error: 'Wrong username or PIN' }, { status: 401 });
 	}
 
 	attempts.delete(key);
+	pruneExpiredSessions();
 	createSession(cookies, user.id, user.role);
+	try { logActivity({ userId: user.id, serviceId: null, action: 'auth.login.success', title: user.username }); } catch { /* best-effort */ }
 	return json({ ok: true, role: user.role });
 };

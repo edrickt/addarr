@@ -37,18 +37,23 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'baseUrl must be a valid URL, e.g. http://192.168.1.10:7878' }, { status: 400 });
 	}
 
+	// Preserve reverse-proxy subpaths (e.g. https://host/radarr); strip only trailing slashes (F-SETTINGS-03).
+	const baseWithoutSlash = `${normalizedUrl.origin}${normalizedUrl.pathname.replace(/\/+$/, '')}`;
+	const baseUrl = baseWithoutSlash === normalizedUrl.origin + '' ? normalizedUrl.origin : baseWithoutSlash;
+
 	// Probe before saving — never store a connection we cannot reach.
 	const client =
 		type === 'radarr'
-			? new RadarrClient(normalizedUrl.origin, body.apiKey.trim())
-			: new SonarrClient(normalizedUrl.origin, body.apiKey.trim());
+			? new RadarrClient(baseUrl, body.apiKey.trim())
+			: new SonarrClient(baseUrl, body.apiKey.trim());
 
 	try {
+		// Probes never follow redirects — an admin typo should fail loudly, not probe internal hosts (F-SETTINGS-04).
 		const status = await client.systemStatus();
 		upsertService({
 			type,
 			name: body.name.trim(),
-			baseUrl: normalizedUrl.origin,
+			baseUrl: baseUrl,
 			apiKey: body.apiKey.trim(),
 			appVersion: status.version
 		});

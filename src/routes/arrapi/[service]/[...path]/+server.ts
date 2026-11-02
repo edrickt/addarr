@@ -38,7 +38,9 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	}
 
 	const subPath = (params.path ?? '').replace(/^\/+/, '');
-	const target = `/${subPath}${url.search}`;
+	// Match on pathname only; query strings never decide allow-list membership (F-SETTINGS-01).
+	const target = `/${subPath}`;
+	const upstream = `/${subPath}${url.search}`;
 
 	if (!ALLOWED.some((re) => re.test(target))) {
 		return json(
@@ -49,12 +51,16 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
 	try {
 		const client = getClient(service);
-		const data = await client.raw('GET', target);
+		const data = await client.raw('GET', upstream);
 		return json(data);
 	} catch (err) {
 		if (err instanceof ArrError) {
-			return json({ error: err.message, detail: err.detail }, { status: err.status === 502 ? 502 : 502 });
+			// Preserve upstream status for 4xx (auth, missing, rate-limit); map the rest to 502 (F-SETTINGS-02).
+			const status = err.status >= 400 && err.status < 500 ? err.status : 502;
+			console.error(`[passthrough] ${service}${upstream} failed:`, err.message);
+			return json({ error: 'Passthrough request failed', detail: err.detail }, { status });
 		}
+		console.error(`[passthrough] ${service}${upstream} failed:`, err);
 		return json({ error: 'Passthrough request failed' }, { status: 500 });
 	}
 };

@@ -13,7 +13,7 @@
  * add-resource.test.ts).
  */
 
-import type { AddDefaults } from './types.js';
+import type { AddDefaults } from './types.ts';
 
 export type SonarrSeason = { seasonNumber: number; monitored: boolean };
 

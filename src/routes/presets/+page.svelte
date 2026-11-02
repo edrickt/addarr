@@ -1,4 +1,12 @@
 <script lang="ts">
+	function safeParseTags(v: unknown): number[] {
+		try {
+			const p = JSON.parse(String(v ?? '[]'));
+			return Array.isArray(p) ? p.filter((n) => Number.isInteger(n)) : [];
+		} catch {
+			return [];
+		}
+	}
 	import PresetForm from '$lib/components/PresetForm.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
@@ -29,7 +37,10 @@
 	let deleting = $state<PresetRow | null>(null);
 	let showNew = $state(false);
 
+	let loadSeq = 0;
 	async function load() {
+		const seq = ++loadSeq;
+		const svc = service;
 		msg = null;
 		// Switching service invalidates any open editor or delete dialog —
 		// their ids belong to the other service's preset table.
@@ -37,8 +48,9 @@
 		showNew = false;
 		deleting = null;
 		try {
-			const res = await fetch(`/api/presets?service=${service}`);
+			const res = await fetch(`/api/presets?service=${svc}`);
 			const data = await res.json();
+			if (seq !== loadSeq || svc !== service) return;
 			if (!res.ok) {
 				presets = [];
 				options = null;
@@ -51,10 +63,12 @@
 			// Add button, so an empty list must lead straight to creation.
 			showNew = presets.length === 0;
 		} catch {
+			if (seq !== loadSeq || svc !== service) return;
 			msg = { kind: 'error', text: 'Failed to load presets' };
 		}
 	}
 	$effect(() => {
+		service;
 		load();
 	});
 
@@ -84,7 +98,7 @@
 	}
 
 	function tagLabels(jsonStr: string): string {
-		const ids = JSON.parse(jsonStr) as number[];
+		const ids = safeParseTags(jsonStr) as number[];
 		if (ids.length === 0) return '—';
 		return ids
 			.map((id) => options?.tags.find((t) => t.id === id)?.label ?? `#${id}`)
@@ -99,12 +113,12 @@
 <h1>Presets</h1>
 <p>Presets decide what the <strong>Add</strong> button does: quality, folder, monitoring, and whether a search starts.</p>
 
-<div class="tabs">
-	<button class="tab" class:active={service === 'radarr'} onclick={() => (service = 'radarr')}>Radarr</button>
-	<button class="tab" class:active={service === 'sonarr'} onclick={() => (service = 'sonarr')}>Sonarr</button>
+<div class="tabs" role="group" aria-label="Service">
+	<button class="tab" class:active={service === 'radarr'} aria-pressed={service === 'radarr'} onclick={() => (service = 'radarr')}>Radarr</button>
+	<button class="tab" class:active={service === 'sonarr'} aria-pressed={service === 'sonarr'} onclick={() => (service = 'sonarr')}>Sonarr</button>
 </div>
 
-{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : undefined}>{msg.text}</p>{/if}
+{#if msg}<p class="msg {msg.kind === 'ok' ? 'ok' : 'error'}" role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</p>{/if}
 
 {#if !options}
 	<p class="hint">Connect {service} in Settings first.</p>
@@ -169,7 +183,7 @@
 		<ConfirmDialog
 			title={`Delete preset “${deleting.name}”?`}
 			body={deleting.is_default
-				? 'This is the default preset — the member Add button stops working until you pick a new default.'
+				? 'This is the default preset — the member Add button switches to another preset until you pick a new default.'
 				: 'This preset is not the default, so the member Add button is unaffected.'}
 			requireText={deleting.name}
 			confirmLabel="Delete preset"
@@ -252,4 +266,9 @@
 		padding: 0.3rem 0.7rem;
 		font-size: 0.85rem;
 	}
+@media (max-width: 640px) {
+	.preset-list li { flex-wrap: wrap; }
+	.preset-list li .actions { width: 100%; justify-content: flex-end; }
+}
+.preset-info { min-width: 0; overflow-wrap: anywhere; }
 </style>

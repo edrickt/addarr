@@ -21,7 +21,10 @@ http.createServer(async (req, res) => {
 	const p = url.pathname.replace(/\/$/, '');
 
 	if (p.startsWith('/__mock/')) {
-		const body = await readBody(req);
+		if (req.method !== 'POST') return j(res, 405, { error: 'mock control is POST-only' });
+		let body = null;
+		try { body = await readBody(req); } catch { return j(res, 400, { error: 'invalid JSON' }); }
+		if (body != null && typeof body !== 'object') return j(res, 400, { error: 'object body required' });
 		if (p === '/__mock/radarr/movie') {
 			const i = movies.findIndex((m) => m.id === body.id);
 			if (i >= 0) movies[i] = body;
@@ -54,7 +57,7 @@ http.createServer(async (req, res) => {
 		return j(res, 201, m);
 	}
 	j(res, 404, {});
-}).listen(8787, () => console.log('mock radarr on :8787'));
+}, '127.0.0.1').listen(8787, () => console.log('mock radarr on :8787'));
 
 // ---------------------------------------------------------------- Sonarr
 const series = [];
@@ -65,7 +68,10 @@ http.createServer(async (req, res) => {
 	const p = url.pathname.replace(/\/$/, '');
 
 	if (p.startsWith('/__mock/')) {
-		const body = await readBody(req);
+		if (req.method !== 'POST') return j(res, 405, { error: 'mock control is POST-only' });
+		let body = null;
+		try { body = await readBody(req); } catch { return j(res, 400, { error: 'invalid JSON' }); }
+		if (body != null && typeof body !== 'object') return j(res, 400, { error: 'object body required' });
 		if (p === '/__mock/sonarr/series') {
 			const i = series.findIndex((s) => s.id === body.id);
 			if (i >= 0) series[i] = body;
@@ -96,4 +102,4 @@ http.createServer(async (req, res) => {
 	}
 	if (p === '/api/v3/queue') return j(res, 200, { records: sonarrQueue });
 	j(res, 404, {});
-}).listen(8788, () => console.log('mock sonarr on :8788'));
+}, '127.0.0.1').listen(8788, () => console.log('mock sonarr on :8788'));
