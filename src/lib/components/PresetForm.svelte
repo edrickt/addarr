@@ -1,4 +1,12 @@
 <script lang="ts">
+	function safeParseTags(v: unknown): number[] {
+		try {
+			const p = JSON.parse(String(v ?? '[]'));
+			return Array.isArray(p) ? p.filter((n: unknown) => Number.isInteger(n)) : [];
+		} catch {
+			return [];
+		}
+	}
 	type Option = { id: number; name?: string; path?: string; label?: string };
 	type PresetRow = {
 		id: number;
@@ -47,7 +55,7 @@
 		rootFolderPath = preset?.root_folder_path ?? null;
 		monitored = preset ? preset.monitored === 1 : true;
 		searchOnAdd = preset ? preset.search_on_add === 1 : true;
-		selectedTags = preset ? (JSON.parse(preset.tags_json) as number[]) : [];
+		selectedTags = preset ? (safeParseTags(preset.tags_json) as number[]) : [];
 		minimumAvailability = preset?.minimum_availability ?? 'released';
 		seriesTypeDefault = preset?.series_type_default ?? 'standard';
 		seasonMonitorPolicy = preset?.season_monitor_policy ?? 'all';

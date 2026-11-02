@@ -64,14 +64,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				return json({ error: 'Movie not found on TMDB (via Radarr)' }, { status: 404 });
 			}
 			const added = await client.add(movie, defaults);
-			logActivity({
-				userId: user?.id ?? null,
-				serviceId: svc.id,
-				action: 'add.movie',
-				arrItemId: added.id ?? null,
-				title: added.title,
-				payload: { tmdbId: movie.tmdbId, preset: preset.name, searchOnAdd: defaults.searchOnAdd }
-			});
+			try {
+				logActivity({
+					userId: user?.id ?? null,
+					serviceId: svc.id,
+					action: 'add.movie',
+					arrItemId: added.id ?? null,
+					title: added.title,
+					payload: { tmdbId: movie.tmdbId, preset: preset.name, searchOnAdd: defaults.searchOnAdd }
+				});
+			} catch (logErr) {
+				console.error('[add] activity log failed (add succeeded):', logErr);
+			}
 			return json({ ok: true, id: added.id, title: added.title, searchQueued: defaults.searchOnAdd });
 		}
 
@@ -85,30 +89,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				return json({ error: 'Series not found on TVDB (via Sonarr)' }, { status: 404 });
 			}
 			const added = await client.add(series, defaults);
-			logActivity({
-				userId: user?.id ?? null,
-				serviceId: svc.id,
-				action: 'add.series',
-				arrItemId: added.id ?? null,
-				title: added.title,
-				payload: {
-					tvdbId: series.tvdbId,
-					preset: preset.name,
-					searchOnAdd: defaults.searchOnAdd,
-					seriesType: added.seriesType
-				}
-			});
+			try {
+				logActivity({
+					userId: user?.id ?? null,
+					serviceId: svc.id,
+					action: 'add.series',
+					arrItemId: added.id ?? null,
+					title: added.title,
+					payload: {
+						tvdbId: series.tvdbId,
+						preset: preset.name,
+						searchOnAdd: defaults.searchOnAdd,
+						seriesType: added.seriesType
+					}
+				});
+			} catch (logErr) {
+				console.error('[add] activity log failed (add succeeded):', logErr);
+			}
 			return json({ ok: true, id: added.id, title: added.title, searchQueued: defaults.searchOnAdd });
 		}
 
 		return json({ error: 'Unknown service adapter' }, { status: 500 });
 	} catch (err) {
 		if (err instanceof ArrError) {
-			return json({ error: err.message }, { status: err.status === 502 ? 502 : 400 });
+			console.error(`[add] upstream failure:`, err.message);
+			return json({ error: 'Could not add — the library is not responding right now' }, { status: 502 });
 		}
-		return json(
-			{ error: err instanceof Error ? err.message : 'Add failed' },
-			{ status: 500 }
-		);
+		console.error(`[add] failed:`, err);
+		return json({ error: 'Add failed' }, { status: 500 });
 	}
 };

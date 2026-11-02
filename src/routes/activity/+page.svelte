@@ -31,9 +31,14 @@
 		loadError = false;
 		try {
 			const res = await fetch(`/api/activity?page=${pageNum}`);
+			if (!res.ok) {
+				if (res.status === 401) throw new Error('Signed out — sign in again.');
+				const d = await res.json().catch(() => ({}));
+				throw new Error((d as { error?: string }).error ?? `Request failed (${res.status})`);
+			}
 			const data = await res.json();
 			entries = data.entries ?? [];
-			hasMore = entries.length === (data.pageSize ?? PAGE_SIZE);
+		hasMore = entries.length === (data.pageSize ?? PAGE_SIZE);
 		} catch {
 			loadError = true;
 		} finally {

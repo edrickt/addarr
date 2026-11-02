@@ -51,12 +51,21 @@ export function setDefaultPreset(serviceId: number, presetId: number): void {
 	}
 }
 
+function safeTags(json: unknown): number[] {
+	try {
+		const v = JSON.parse(String(json ?? '[]'));
+		return Array.isArray(v) ? v.filter((n) => Number.isInteger(n)) : [];
+	} catch {
+		return [];
+	}
+}
+
 export function presetToAddDefaults(row: PresetRow): AddDefaults {
 	return {
 		qualityProfileId: row.quality_profile_id,
 		rootFolderPath: row.root_folder_path,
 		monitored: row.monitored === 1,
-		tags: JSON.parse(row.tags_json) as number[],
+		tags: safeTags(row.tags_json),
 		minimumAvailability: row.minimum_availability ?? undefined,
 		searchOnAdd: row.search_on_add === 1,
 		seriesType: row.series_type_default ?? undefined,
@@ -101,6 +110,11 @@ export async function ensureDefaultPreset(
 		const [profiles, folders] = await Promise.all([client.qualityProfiles(), client.rootFolders()]);
 		if (profiles.length === 0 || folders.length === 0) {
 			return { created: false, note: `${type} has no quality profile or root folder yet` };
+		}
+		// Repair an unusable default in place instead of inserting a duplicate 'Default' (F-PRESET-04).
+		if (existing) {
+			db.prepare(`UPDATE presets SET quality_profile_id = ?, root_folder_path = ?, is_default = 1 WHERE id = ?`).run(profiles[0].id, folders[0].path, existing.id);
+			return { created: true };
 		}
 		db.prepare(
 			`INSERT INTO presets (

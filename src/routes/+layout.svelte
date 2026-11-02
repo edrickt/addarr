@@ -2,6 +2,7 @@
 	import '@fontsource-variable/inter';
 	import '../app.css';
 	import { page } from '$app/state';
+	import { tick } from 'svelte';
 	let { data, children } = $props();
 
 	async function logout() {
@@ -23,12 +24,13 @@
 	]);
 </script>
 
+<a class="skip-link" href="#main" onclick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
 <div class="app">
 	<header class="topbar">
 		<a href="/" class="brand">Addarr</a>
 		<nav class="topnav">
 			{#each nav as item (item.href)}
-				<a href={item.href} class:active={page.url.pathname === item.href}>
+				<a href={item.href} class:active={page.url.pathname === item.href} aria-current={page.url.pathname === item.href ? 'page' : undefined}>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 24 24"
@@ -88,7 +90,8 @@
 			</div>
 		{/if}
 	</header>
-	<main class="content">
+	<div class="sr-only" role="status" aria-live="polite">{page.url.pathname}</div>
+	<main id="main" class="content" tabindex="-1">
 		{@render children()}
 	</main>
 </div>

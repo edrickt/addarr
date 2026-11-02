@@ -35,15 +35,17 @@
 		class="card dialog"
 		role="dialog"
 		aria-modal="true"
-		aria-label={title}
+		aria-labelledby="confirm-title"
+		aria-describedby="confirm-body confirm-hint"
 		tabindex="-1"
 		use:modal
 	>
-		<h2>{title}</h2>
-		{#if body}<p class="hint">{body}</p>{/if}
+		<h2 id="confirm-title">{title}</h2>
+		{#if body}<p class="hint" id="confirm-body">{body}</p>{/if}
 		{#if requireText}
-			<p class="hint">This cannot be undone. Type “{requireText}” to confirm.</p>
-			<input bind:value={text} placeholder={requireText} autocomplete="off" />
+			<p class="hint" id="confirm-hint">This cannot be undone. Type “{requireText}” to confirm.</p>
+			<label class="sr-only" for="confirm-input">Type {requireText} to confirm</label>
+			<input id="confirm-input" bind:value={text} placeholder={requireText} autocomplete="off" aria-describedby="confirm-hint" />
 		{/if}
 		<div class="dialog-actions">
 			<button

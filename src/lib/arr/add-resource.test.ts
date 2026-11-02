@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildAddResource, type SonarrSeries } from './add-resource.ts';
-import type { AddDefaults } from './types.js';
+import type { AddDefaults } from './types.ts';
 
 const series: SonarrSeries = {
 	title: 'Breaking Bad',

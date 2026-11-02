@@ -1,15 +1,21 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const DB_PATH = process.env.ADDARR_DB ?? join(process.cwd(), 'data', 'addarr.db');
 
-mkdirSync(dirname(DB_PATH), { recursive: true });
+mkdirSync(dirname(DB_PATH), { recursive: true, mode: 0o700 });
+try { chmodSync(dirname(DB_PATH), 0o700); } catch { /* best-effort on Windows */ }
 
 export const db = new DatabaseSync(DB_PATH);
 
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
+try {
+	chmodSync(DB_PATH, 0o600);
+	chmodSync(`${DB_PATH}-wal`, 0o600);
+	chmodSync(`${DB_PATH}-shm`, 0o600);
+} catch { /* missing sidecars on first run, or Windows ACLs */ }
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -61,6 +67,8 @@ CREATE TABLE IF NOT EXISTS settings (
 	value TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS activity_log (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -74,10 +82,13 @@ CREATE TABLE IF NOT EXISTS activity_log (
 `);
 
 // Schema drift migration for databases created before the `disabled` column existed.
-try {
-	db.exec(`ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`);
-} catch {
-	/* column already present */
+const hasDisabled = db.prepare(`SELECT name FROM pragma_table_info('users') WHERE name = 'disabled'`).get();
+if (!hasDisabled) {
+	try {
+		db.exec(`ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`);
+	} catch (err) {
+		throw new Error(`Schema migration failed adding users.disabled: ${err instanceof Error ? err.message : err}`);
+	}
 }
 
 export function getSetting(key: string): string | undefined {
@@ -124,6 +135,7 @@ export function upsertService(input: {
 		   name = excluded.name,
 		   base_url = excluded.base_url,
 		   api_key = excluded.api_key,
-		   app_version = excluded.app_version`
+		   app_version = excluded.app_version,
+		   enabled = 1`
 	).run(input.type, input.name, input.baseUrl.replace(/\/+$/, ''), input.apiKey, input.appVersion ?? null);
 }

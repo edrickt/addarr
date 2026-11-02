@@ -190,6 +190,23 @@ export const PATCH: RequestHandler = async ({ url, params, request, locals }) =>
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 
+	// Runtime schema: the UI constrains inputs, the API is the trust boundary (F-CONSOLE-02).
+	if (body.monitored !== undefined && typeof body.monitored !== 'boolean')
+		return json({ error: 'monitored must be a boolean' }, { status: 400 });
+	if (body.qualityProfileId !== undefined && (!Number.isInteger(body.qualityProfileId) || body.qualityProfileId <= 0))
+		return json({ error: 'qualityProfileId must be a positive integer' }, { status: 400 });
+	if (body.rootFolderPath !== undefined && (typeof body.rootFolderPath !== 'string' || !body.rootFolderPath.trim()))
+		return json({ error: 'rootFolderPath must be a non-empty string' }, { status: 400 });
+	if (body.tags !== undefined && (!Array.isArray(body.tags) || !body.tags.every((n: unknown) => Number.isInteger(n) && (n as number) > 0)))
+		return json({ error: 'tags must be an array of positive tag ids' }, { status: 400 });
+	if (body.seasons !== undefined) {
+		if (!Array.isArray(body.seasons)) return json({ error: 'seasons must be an array' }, { status: 400 });
+		for (const s of body.seasons) {
+			if (typeof s !== 'object' || s === null || !Number.isInteger((s as { seasonNumber?: unknown }).seasonNumber) || typeof (s as { monitored?: unknown }).monitored !== 'boolean')
+				return json({ error: 'each season needs { seasonNumber: integer, monitored: boolean }' }, { status: 400 });
+		}
+	}
+
 	try {
 		if (got.client instanceof RadarrClient) {
 			const movie = await got.client.movie(id);
@@ -288,6 +305,10 @@ export const DELETE: RequestHandler = async ({ url, params, locals }) => {
 			}
 
 			case 'queue': {
+				const confirm = url.searchParams.get('confirm') ?? '';
+				if (confirm !== 'yes' && confirm !== 'confirm') {
+					return json({ error: 'Queue removal requires confirm=yes' }, { status: 400 });
+				}
 				const removeFromClient = url.searchParams.get('removeFromClient') === '1';
 				await got.client.removeQueueItem(id, removeFromClient);
 				logActivity({
@@ -301,12 +322,14 @@ export const DELETE: RequestHandler = async ({ url, params, locals }) => {
 			}
 
 			case 'exclusions': {
+				if ((url.searchParams.get('confirm') ?? '') !== 'yes') return json({ error: 'Exclusion removal requires confirm=yes' }, { status: 400 });
 				await got.client.removeImportExclusion(id);
 				logActivity({ userId: locals.user!.id, serviceId: got.serviceId, action: 'exclusion.remove', arrItemId: id });
 				return json({ ok: true });
 			}
 
 			case 'blocklist': {
+				if ((url.searchParams.get('confirm') ?? '') !== 'yes') return json({ error: 'Blocklist removal requires confirm=yes' }, { status: 400 });
 				await got.client.removeBlocklistItem(id);
 				logActivity({ userId: locals.user!.id, serviceId: got.serviceId, action: 'blocklist.remove', arrItemId: id });
 				return json({ ok: true });

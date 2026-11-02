@@ -51,12 +51,19 @@ export function modal(node: HTMLElement) {
 		if (!node.contains(e.target as Node)) node.focus();
 	}
 
-	node.addEventListener('keydown', onKeydown);
+	document.addEventListener('keydown', onKeydown, true);
 	document.addEventListener('focusin', onFocusIn);
+	// Mark background inert while dialog is open (F-UI-01).
+	const app = document.querySelector('.app');
+	const prevInert = app?.getAttribute('inert');
+	app?.setAttribute('inert', '');
+	// Expose dialog to the trap itself
+	node.removeAttribute('inert');
 	return {
 		destroy() {
-			node.removeEventListener('keydown', onKeydown);
+			document.removeEventListener('keydown', onKeydown, true);
 			document.removeEventListener('focusin', onFocusIn);
+			if (prevInert == null) app?.removeAttribute('inert');
 			unlockBodyScroll();
 			prev?.focus();
 		}

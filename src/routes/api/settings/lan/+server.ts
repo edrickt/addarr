@@ -75,6 +75,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (c.boundLan) {
 		// Already reachable on the LAN: broadcast can change immediately.
 		c.broadcasting = enabled ? await c.startBroadcast() : await c.stopBroadcast();
+		if (enabled && !c.broadcasting) {
+			return json({ ok: false, enabled, broadcasting: false, restartRequired: false, error: 'LAN is on, but discovery failed — check the server log.' }, { status: 500 });
+		}
 		return json({ ok: true, enabled, broadcasting: c.broadcasting, restartRequired: false });
 	}
 

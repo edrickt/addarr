@@ -18,9 +18,16 @@
 	let saved: Array<{ type: string; name: string; base_url: string; app_version: string | null }> =
 		$state([]);
 
+	let saveError: string | null = $state(null);
 	async function loadSaved() {
+		saveError = null;
 		try {
 			const res = await fetch('/api/services');
+			if (!res.ok) {
+				const d = await res.json().catch(() => ({}));
+				saveError = (d as { error?: string }).error ?? `Could not load saved services (${res.status})`;
+				return;
+			}
 			const data = await res.json();
 			saved = data.services ?? [];
 			for (const s of saved) {
@@ -101,7 +108,13 @@
 		restarting = true;
 		restartAsk = false;
 		try {
-			await fetch('/api/restart', { method: 'POST' });
+			const res = await fetch('/api/restart', { method: 'POST' });
+			if (!res.ok) {
+				const d = await res.json().catch(() => ({}));
+				restartStatus = (d as { error?: string }).error ?? `Restart failed (${res.status})`;
+				restarting = false;
+				return;
+			}
 		} catch {
 			/* the server may drop the connection mid-restart — expected */
 		}
@@ -148,9 +161,13 @@
 				body: JSON.stringify({ enabled: !lan.enabled })
 			});
 			const data = await res.json();
-			lanStatus = res.ok
-				? { kind: 'ok', text: data.message ?? (data.broadcasting ? 'Broadcasting on the LAN.' : 'LAN sharing off.') }
-				: { kind: 'error', text: data.error ?? 'Failed' };
+			if (!res.ok) {
+				lanStatus = { kind: 'error', text: data.error ?? 'Failed' };
+			} else if (data.enabled && data.broadcasting === false) {
+				lanStatus = { kind: 'error', text: 'LAN is on, but discovery failed — check the server log.' };
+			} else {
+				lanStatus = { kind: 'ok', text: data.message ?? (data.broadcasting ? 'Broadcasting on the LAN.' : 'LAN sharing off.') };
+			}
 			if (res.ok) await loadLan();
 		} catch {
 			lanStatus = { kind: 'error', text: 'Request failed' };
@@ -174,10 +191,10 @@
 		{:else if hasDefaultPreset === false}
 			<h2>One step left</h2>
 			<p class="hint">Create your first preset — it decides what the <strong>Add</strong> button does for your family.</p>
-			<a href="/presets"><button>Open Presets</button></a>
+			<a class="button-link" href="/presets">Open Presets</a>
 		{:else}
 			<h2>You're set</h2>
-			<p class="hint">Hand your family <span class="mono">http://addarr.local:4545</span> (or your machine's IP — the address is printed in the server console). Searching and adding needs no account.</p>
+			<p class="hint">Hand your family <span class="mono">http://addarr.local:{lan?.port ?? 4545}</span> (or your machine's IP — the address is printed in the server console). Searching and adding needs no account.</p>
 		{/if}
 	</div>
 {/if}
@@ -206,11 +223,12 @@
 			{b ? 'Testing…' : 'Test & Save'}
 		</button>
 		{#if s}
-			<p class="msg {s.kind === 'ok' ? 'ok' : 'error'}" role={s.kind === 'error' ? 'alert' : undefined}>{s.text}</p>
+			<p class="msg {s.kind === 'ok' ? 'ok' : 'error'}" role={s.kind === 'error' ? 'alert' : 'status'}>{s.text}</p>
 		{/if}
 	</div>
 {/each}
 
+{#if saveError}<p class="msg error" role="alert">{saveError} <button class="secondary" onclick={loadSaved}>Retry</button></p>{/if}
 <div class="card">
 	<h2>Network</h2>
 	{#if lan}
@@ -240,9 +258,9 @@
 			{/if}
 		</p>
 		<p class="hint">To keep Addarr off the Tailnet, bind one interface: <span class="mono">HOST=192.168.1.x npm start</span> (your LAN IP).</p>
-		{#if lanStatus}<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>{/if}
+		{#if lanStatus}<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : 'status'}>{lanStatus.text}</p>{/if}
 	{:else if lanStatus}
-		<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : undefined}>{lanStatus.text}</p>
+		<p class="msg {lanStatus.kind}" role={lanStatus.kind === 'error' ? 'alert' : 'status'}>{lanStatus.text}</p>
 	{:else}
 		<p class="hint">Loading…</p>
 	{/if}

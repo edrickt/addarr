@@ -5,7 +5,7 @@
 One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node >= 22.5](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen.svg)](https://nodejs.org)
+[![Node >= 22.18](https://img.shields.io/badge/node-%3E%3D22.18-brightgreen.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#setup-windows--macos--linux)
 
 Non-technical household members search for a title and tap **Add**. Done. An admin defines exactly what "Add" means and gets deep, curated control over the *arr instances. The browser only ever talks to Addarr — Radarr/Sonarr API keys live server-side and never reach the client.
@@ -75,7 +75,7 @@ Non-technical household members search for a title and tap **Add**. Done. An adm
 
 ### Requirements
 
-- **Node.js 22.5 or newer** (an LTS release is fine), the only hard requirement. Check with `node -v`.
+- **Node.js 22.18 or newer** (an LTS release is fine), the only hard requirement. Check with `node -v`.
 - **Git**, *optional* — only needed if you want to clone or update via git. Downloading a ZIP works just as well.
 
 No database server, no build tools, no containers. `npm start` handles everything else: installing dependencies, building, and starting the server in the background.
@@ -219,7 +219,7 @@ See `PLAN.md` for the full architecture and milestone history.
 
 ## Development
 
-Prerequisites: Node.js 22.5+.
+Prerequisites: Node.js 22.18+.
 
 ```sh
 git clone https://github.com/edrickt/addarr.git

@@ -62,6 +62,8 @@ export function hasAnyUser(): boolean {
 	return row?.any === 1;
 }
 
+const DUMMY_HASH = (() => { try { return hashPin('000000'); } catch { return 'AA:AA'; } })();
+
 export function getUserByUsername(username: string): UserRow | undefined {
 	return db.prepare(`SELECT * FROM users WHERE username = ?`).get(username) as UserRow | undefined;
 }
@@ -84,6 +86,8 @@ export function createUser(input: {
  * role's lifetime remains, the expiry (and cookie) is refreshed.
  */
 export function getSessionUser(sid: string, cookies: Cookies): SessionUser | null {
+	// Opportunistic hygiene: expired rows never accumulate (F-AUTH-04).
+	if (Math.random() < 0.05) pruneExpiredSessions();
 	const row = db
 		.prepare(
 			`SELECT s.expires_at, u.id, u.username, u.role
@@ -126,6 +130,10 @@ export function createSession(
 	);
 	setSessionCookie(cookies, sid, expiresAt);
 	return sid;
+}
+
+export function pruneExpiredSessions(): void {
+	try { db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run(); } catch { /* best-effort */ }
 }
 
 export function destroySession(sid: string, cookies: Cookies): void {

@@ -1,7 +1,7 @@
-import { ArrClient } from './client.js';
-import { buildAddResource, type SonarrSeries } from './add-resource.js';
-import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.js';
-import { seriesStatus } from './status.js';
+import { ArrClient } from './client.ts';
+import { buildAddResource, type SonarrSeries } from './add-resource.ts';
+import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.ts';
+import { seriesStatus } from './status.ts';
 
 /** Sonarr API v3 adapter. Verified field names against Sonarr source:
  *  SeriesLookupController (GET /series/lookup?term=), SeriesController (POST /series),

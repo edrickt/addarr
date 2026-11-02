@@ -32,11 +32,17 @@ export type ArrItemStatus = {
 
 type QueueRow = Record<string, unknown>;
 
-/** 'HH:MM:SS' → seconds; null when absent/unparseable. */
+/** '[d.]HH:MM:SS' → seconds; null when absent/unparseable. */
 export function parseTimeleft(v: unknown): number | null {
-	const m = /^(\d+):(\d{1,2}):(\d{1,2})$/.exec(String(v ?? ''));
+	const s = String(v ?? '').trim();
+	const m = /^(?:(\d+)\.)?(\d+):(\d{1,2}):(\d{1,2})$/.exec(s);
 	if (!m) return null;
-	return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+	const days = m[1] ? Number(m[1]) : 0;
+	const h = Number(m[2]);
+	const min = Number(m[3]);
+	const sec = Number(m[4]);
+	if (!Number.isFinite(h + min + sec) || min > 59 || sec > 59) return null;
+	return days * 86400 + h * 3600 + min * 60 + sec;
 }
 
 /**
@@ -50,7 +56,11 @@ export function aggregateQueue(rows: QueueRow[]): ArrItemStatus {
 	// *arr serializes Sizeleft as `sizeleft`; keep the camelCase fallback for
 	// older fixtures/payloads.
 	const left = rows.reduce((a, q) => a + Number(q.sizeleft ?? q.sizeLeft ?? 0), 0);
-	const progress = size > 0 ? Math.round(((size - left) / size) * 100) : null;
+	let progress = size > 0 ? Math.round(((size - left) / size) * 100) : null;
+	if (progress != null) {
+		if (!Number.isFinite(progress)) progress = null;
+		else progress = Math.min(100, Math.max(0, progress));
+	}
 
 	const timelefts = rows.map((q) => parseTimeleft(q.timeleft)).filter((v): v is number => v != null);
 	const timeLeftSeconds = timelefts.length > 0 ? Math.max(...timelefts) : null;
@@ -94,25 +104,29 @@ export function movieStatus(movie: MovieLike, rows: QueueRow[]): ArrItemStatus {
 	return { state: 'unreleased' };
 }
 
-type SeriesStats = { episodeFileCount?: number; totalEpisodeCount?: number };
+type SeriesStats = { episodeFileCount?: number; totalEpisodeCount?: number; episodeCount?: number };
 
 /** Status for a Sonarr series, given the queue rows matching its id. */
 export function seriesStatus(
-	series: { statistics?: SeriesStats | null; monitored?: boolean },
+	series: { statistics?: SeriesStats | null; monitored?: boolean; ended?: boolean },
 	rows: QueueRow[]
 ): ArrItemStatus {
 	const have = series.statistics?.episodeFileCount ?? 0;
-	const total = series.statistics?.totalEpisodeCount ?? 0;
+	// Aired count is the member-truthful denominator; total includes unaired/future episodes.
+	const aired = series.statistics?.episodeCount ?? series.statistics?.totalEpisodeCount ?? 0;
+	const total = series.statistics?.totalEpisodeCount ?? aired;
 
 	if (rows.length > 0) {
 		// While downloading, progress is byte-based; episode counts ride along
 		// so the UI can show them once the queue drains.
 		const base = aggregateQueue(rows);
-		return total > 0 ? { ...base, episodes: { have, total } } : base;
+		return aired > 0 ? { ...base, episodes: { have, total: aired } } : base;
 	}
-	if (total > 0 && have >= total) return { state: 'available' };
-	if (total > 0 && have > 0) {
-		return { state: 'partial', progress: Math.round((have / total) * 100), episodes: { have, total } };
+	if (aired <= 0) return { state: 'unreleased' };
+	if (have >= aired) return { state: 'available' };
+	if (have > 0) {
+		const pct = Math.min(100, Math.max(0, Math.round((have / aired) * 100)));
+		return { state: 'partial', progress: pct, episodes: { have, total: aired } };
 	}
 	return { state: 'missing' };
 }

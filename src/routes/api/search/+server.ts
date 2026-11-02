@@ -28,9 +28,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ service: 'sonarr', results: await client.toPosterCards(await client.lookup(q)) });
 	} catch (err) {
 		if (err instanceof ArrError) {
-			return json({ error: err.message }, { status: err.status === 502 ? 502 : 502 });
+			console.error(`[search] upstream failure:`, err.message);
+			return json({ error: 'The library is not responding right now' }, { status: 502 });
 		}
-		const message = err instanceof Error ? err.message : 'Search failed';
-		return json({ error: message }, { status: 400 });
+		console.error(`[search] failed:`, err);
+		return json({ error: 'Search failed' }, { status: 400 });
 	}
 };

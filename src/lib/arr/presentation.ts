@@ -1,4 +1,4 @@
-import type { ArrItemState } from './status.js';
+import type { ArrItemState } from './status.ts';
 
 /**
  * Member-facing acquisition vocabulary. The poster grid, the Downloads tab,
@@ -18,11 +18,11 @@ export const MEMBER_STATE_LABEL: Record<Exclude<ArrItemState, 'available'>, stri
 	unreleased: 'Unreleased'
 };
 
-/** States that do not change on their own — polling them is wasted work. */
+/** Terminal states — only `available` never changes on its own. `missing` and
+ * `unreleased` self-heal (release dates pass, arrs catch up), so they keep
+ * polling at the slow cadence instead of freezing. */
 export const STATIC_MEMBER_STATES: ReadonlySet<ArrItemState> = new Set([
-	'available',
-	'missing',
-	'unreleased'
+	'available'
 ]);
 
 export type MemberStateTone = 'ok' | 'active' | 'warn' | 'muted';

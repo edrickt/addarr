@@ -14,7 +14,8 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { join } from 'node:path';
+import { dirname, join, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { handler } from '../build/handler.js';
 
 // Set by scripts/service.mjs when a supervisor owns this process:
@@ -25,15 +26,19 @@ const supervisor = process.env.ADDARR_MANAGED ?? '';
 // mirror output into data/addarr.log — `npm run logs` reads it on any platform.
 // The hidden window can still report itself as a TTY, so ADDARR_LOG (set by the
 // launcher) is the reliable signal.
+const HERE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const DATA_DIR = process.env.ADDARR_DATA_DIR ?? join(HERE_ROOT, 'data');
+
 if (process.platform === 'win32' && (process.env.ADDARR_LOG === '1' || !process.stdout.isTTY)) {
-	const logFile = join(process.cwd(), 'data', 'addarr.log');
+	const logFile = join(DATA_DIR, 'addarr.log');
 	try {
-		mkdirSync(join(process.cwd(), 'data'), { recursive: true });
+		mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
 		for (const level of ['log', 'warn', 'error']) {
 			const original = console[level].bind(console);
 			console[level] = (...parts) => {
 				try {
-					appendFileSync(logFile, `${parts.join(' ')}\n`);
+					const line = parts.map((x) => (x instanceof Error ? x.stack ?? String(x) : String(x))).join(' ');
+					appendFileSync(logFile, `${line}\n`);
 				} catch {
 					/* logging must never take the server down */
 				}
@@ -52,8 +57,10 @@ if (process.platform === 'win32' && (process.env.ADDARR_LOG === '1' || !process.
 const forcedLan = process.argv.includes('--lan') || process.env.ADDARR_LAN === '1';
 const port = Number(process.env.PORT) || 4545;
 
-// Same resolution as src/lib/server/db.ts.
-const dbPath = process.env.ADDARR_DB ?? join(process.cwd(), 'data', 'addarr.db');
+// Same resolution as src/lib/server/db.ts; relative ADDARR_DB resolves against the repo root (F-SCRIPT-11).
+const dbPath = process.env.ADDARR_DB
+	? (isAbsolute(process.env.ADDARR_DB) ? process.env.ADDARR_DB : resolve(HERE_ROOT, process.env.ADDARR_DB))
+	: join(DATA_DIR, 'addarr.db');
 
 function readLanSetting() {
 	try {
@@ -62,8 +69,9 @@ function readLanSetting() {
 		const row = db.prepare(`SELECT value FROM settings WHERE key = 'lan_enabled'`).get();
 		db.close();
 		return row?.value === '1';
-	} catch {
-		return false; // DB not readable yet (first run) — default off
+	} catch (err) {
+		console.warn(`LAN setting unreadable, defaulting off: ${err instanceof Error ? err.message : err}`);
+		return false;
 	}
 }
 
@@ -105,25 +113,33 @@ function lanAddresses() {
 
 let bonjour = null;
 let published = false;
+let broadcastChain = Promise.resolve();
+const MDNS_NAME = `Addarr on ${os.hostname()}`;
 
 async function startBroadcast() {
-	if (published) return;
-	try {
-		const { Bonjour } = await import('bonjour-service');
-		bonjour ??= new Bonjour();
-		bonjour.publish({ name: 'Addarr', type: 'http', port, host: os.hostname() });
-		published = true;
-		console.log('Broadcasting on the LAN via mDNS (Bonjour) as "Addarr".');
-	} catch (err) {
-		console.warn(`mDNS broadcast unavailable (${err?.message ?? err}) — continuing without discovery.`);
-	}
+	return (broadcastChain = broadcastChain.then(async () => {
+		if (published) return;
+		try {
+			const { Bonjour } = await import('bonjour-service');
+			bonjour ??= new Bonjour();
+			// IPv4-only bind must not advertise IPv6 (F-SCRIPT-07); pin to a single interface when HOST is concrete.
+			const ipv6 = host === '0.0.0.0' || host === '::' ? false : host.includes(':');
+			bonjour.publish({ name: MDNS_NAME, type: 'http', port, host: os.hostname(), disableIPv6: !ipv6 });
+			published = true;
+			console.log('Broadcasting on the LAN via mDNS (Bonjour) as "Addarr".');
+		} catch (err) {
+			console.warn(`mDNS broadcast unavailable (${err?.message ?? err}) — continuing without discovery.`);
+		}
+	}));
 }
 
 async function stopBroadcast() {
-	if (!bonjour || !published) return;
-	await new Promise((resolve) => bonjour.unpublishAll(resolve));
-	published = false;
-	console.log('mDNS broadcast stopped.');
+	return (broadcastChain = broadcastChain.then(async () => {
+		if (!bonjour || !published) return;
+		await Promise.race([new Promise((resolve) => bonjour.unpublishAll(resolve)), new Promise((r) => setTimeout(r, 2000))]);
+		published = false;
+		console.log('mDNS broadcast stopped.');
+	}));
 }
 
 // --- runtime control surface consumed by /api/settings/lan ----------------
@@ -191,7 +207,7 @@ async function restart() {
 }
 
 // When taking over from a restarting instance, wait for the port to free up.
-function waitPortFree(p, timeoutMs = 15000) {
+function waitPortFree(p, bindHost = '127.0.0.1', timeoutMs = 15000) {
 	const deadline = Date.now() + timeoutMs;
 	return new Promise((resolve) => {
 		const probe = () => {
@@ -204,7 +220,7 @@ function waitPortFree(p, timeoutMs = 15000) {
 				setTimeout(probe, 200);
 			});
 			tester.once('listening', () => tester.close(() => resolve()));
-			tester.listen(p, '127.0.0.1');
+			tester.listen(p, bindHost);
 		};
 		probe();
 	});
@@ -212,15 +228,31 @@ function waitPortFree(p, timeoutMs = 15000) {
 
 // PID file for status/stop on platforms without a real supervisor (Windows),
 // and as a cross-check everywhere else. Removed on the way out.
-const pidPath = join(process.cwd(), 'data', 'addarr.pid');
+const pidPath = join(DATA_DIR, 'addarr.pid');
 
 function writePidFile() {
 	try {
-		mkdirSync(join(process.cwd(), 'data'), { recursive: true });
-		writeFileSync(pidPath, `${process.pid}\n`);
+		mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+		try {
+			const existing = readFileSync(pidPath, 'utf8').trim().split(/\s+/);
+			const existingPid = Number(existing[0]);
+			if (Number.isInteger(existingPid) && existingPid > 0 && existingPid !== process.pid) {
+				try {
+					process.kill(existingPid, 0);
+					console.error(`Another Addarr instance (pid ${existingPid}) owns this data directory — refusing to start.`);
+					process.exit(1);
+				} catch {
+					/* stale PID, safe to replace */
+				}
+			}
+		} catch {
+			/* no existing PID */
+		}
+		writeFileSync(pidPath, `${process.pid} ${Date.now()}\n`);
 		process.on('exit', () => {
 			try {
-				if (readFileSync(pidPath, 'utf8').trim() === String(process.pid)) rmSync(pidPath, { force: true });
+				const cur = readFileSync(pidPath, 'utf8').trim().split(/\s+/)[0];
+				if (cur === String(process.pid)) rmSync(pidPath, { force: true });
 			} catch {
 				/* best effort */
 			}
@@ -231,8 +263,14 @@ function writePidFile() {
 }
 
 async function main() {
-	if (process.env.ADDARR_TAKEOVER_PORT) await waitPortFree(port);
-	await new Promise((resolve) => server.listen(port, host, resolve));
+	if (process.env.ADDARR_TAKEOVER_PORT) await waitPortFree(port, host);
+	await new Promise((resolve, reject) => {
+		server.once('error', (err) => {
+			console.error(`Failed to listen on ${host}:${port}: ${err.message}`);
+			reject(err);
+		});
+		server.listen(port, host, resolve);
+	});
 	writePidFile();
 	const listenLabel = host === '0.0.0.0' ? 'localhost' : host;
 	console.log(`Addarr listening on http://${listenLabel}:${port}`);
@@ -265,6 +303,10 @@ async function main() {
 }
 
 // --- runtime control surface consumed by /api/restart ---------------------
+
+if (typeof process !== 'undefined' && process.on) {
+	process.on('uncaughtException', (err) => { try { appendFileSync(join(DATA_DIR, 'addarr.error.log'), `${new Date().toISOString()} uncaught: ${err?.stack ?? err}\n`); } catch {} console.error(err); process.exit(1); });
+}
 
 globalThis.__addarr.restart = restart;
 
