@@ -1,3 +1,5 @@
+<img src="static/favicon.svg" alt="Addarr app icon" width="96" />
+
 # Addarr
 
 One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
