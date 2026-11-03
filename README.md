@@ -14,7 +14,11 @@ One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
 
 Non-technical household members search for a title and tap **Add**. Done. An admin defines exactly what "Add" means and gets deep, curated control over the *arr instances. The browser only ever talks to Addarr. Radarr/Sonarr API keys live server-side and never reach the client.
 
-<!-- Screenshot: capture pending, poster grid with Add button plus Downloads tab -->
+![Search — find a movie or series, tap Add](docs/screenshots/search.png)
+![Downloads — everything on its way to the library](docs/screenshots/downloads.png)
+![First run — create the admin account](docs/screenshots/setup.png)
+
+*Screenshots from a fresh local run. Connect Radarr/Sonarr and the search view fills with a poster grid and one-tap **Add** buttons.*
 
 - [What it is for](#what-it-is-for)
 - [Features](#features)
