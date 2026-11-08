@@ -362,6 +362,14 @@ export const POST: RequestHandler = async ({ url, params, request, locals }) => 
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	const name = body.name ?? '';
+	// Runtime schema for the curated command payload: the ids must be positive
+	// integers, never arbitrary JSON forwarded to the arr (AUD-13).
+	if (
+		body.ids !== undefined &&
+		(!Array.isArray(body.ids) || !body.ids.every((id: unknown) => Number.isInteger(id) && (id as number) > 0))
+	) {
+		return json({ error: 'ids must be an array of positive integers' }, { status: 400 });
+	}
 	if (got.service === 'radarr') {
 		if (!(RADARR_COMMANDS as readonly string[]).includes(name)) {
 			return json({ error: `Command not allowed: ${name}` }, { status: 400 });

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getClient } from '$lib/server/arr-factory';
+import { resolvePassthroughPath } from '$lib/server/passthrough';
 import { ArrError } from '$lib/arr/types';
 
 /**
@@ -8,28 +9,10 @@ import { ArrError } from '$lib/arr/types';
  * GET only, allow-listed read endpoints, API key injected server-side.
  * No user-supplied URL part ever reaches the arr host itself: the host
  * comes from the services table, and only allow-listed path prefixes pass.
- * Write verbs are structurally impossible here (405).
+ * The subpath is normalized first, so dot-segment/backslash traversal cannot
+ * hide behind an allow-listed prefix (AUD-03). Write verbs are structurally
+ * impossible here (405).
  */
-
-const ALLOWED: RegExp[] = [
-	/^\/system\/status$/,
-	/^\/diskspace$/,
-	/^\/health$/,
-	/^\/movie(\/\d+)?$/,
-	/^\/movie\/lookup\b/,
-	/^\/series(\/\d+)?$/,
-	/^\/series\/lookup\b/,
-	/^\/episode\b/,
-	/^\/queue\b/,
-	/^\/history\b/,
-	/^\/blocklist\b/,
-	/^\/importexclusions(\/\d+)?$/,
-	/^\/calendar\b/,
-	/^\/command(\/\d+)?$/, // GET /command lists recent commands — POST never reaches us
-	/^\/qualityprofile\b/,
-	/^\/rootfolder\b/,
-	/^\/tag(\/\d+)?$/
-];
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	const service = params.service;
@@ -37,12 +20,12 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		return json({ error: 'service must be "radarr" or "sonarr"' }, { status: 400 });
 	}
 
-	const subPath = (params.path ?? '').replace(/^\/+/, '');
-	// Match on pathname only; query strings never decide allow-list membership (F-SETTINGS-01).
-	const target = `/${subPath}`;
-	const upstream = `/${subPath}${url.search}`;
+	// Normalize, then match and forward the same normalized path — never the raw
+	// request path, which URL parsing would resolve differently (AUD-03).
+	const { target, allowed } = resolvePassthroughPath(params.path ?? '');
+	const upstream = `${target}${url.search}`;
 
-	if (!ALLOWED.some((re) => re.test(target))) {
+	if (!allowed) {
 		return json(
 			{ error: `Endpoint not allowed: ${target}. Curated screens cover the rest — by design.` },
 			{ status: 403 }

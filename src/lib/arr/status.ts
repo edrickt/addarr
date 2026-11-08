@@ -32,6 +32,15 @@ export type ArrItemStatus = {
 
 type QueueRow = Record<string, unknown>;
 
+/**
+ * States that imply the arr is (or should be) pursuing the title. An
+ * unmonitored library item with no queue activity must not present these —
+ * they would claim work that nobody asked for (AUD-05).
+ */
+export function isPursuitState(state: ArrItemState): boolean {
+	return state === 'missing' || state === 'unreleased' || state === 'partial';
+}
+
 /** '[d.]HH:MM:SS' → seconds; null when absent/unparseable. */
 export function parseTimeleft(v: unknown): number | null {
 	const s = String(v ?? '').trim();

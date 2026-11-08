@@ -1,29 +1,20 @@
 import { json, redirect, type Handle } from '@sveltejs/kit';
 import { getSessionUser, hasAnyUser, SESSION_COOKIE } from '$lib/server/auth';
+import { decodePathname, isAdminPath } from '$lib/server/admin-gating';
 
 // Auth model: members use the app anonymously; only admin surfaces need a
 // session (admin created at first-run setup, 12-hour rolling sessions).
-const ADMIN_PREFIXES = [
-	'/settings',
-	'/presets',
-	'/console',
-	'/activity',
-	'/api/services',
-	'/api/presets',
-	'/api/console',
-	'/api/activity',
-	'/api/settings',
-	'/api/restart',
-	'/arrapi'
-];
-
 export const handle: Handle = async ({ event, resolve }) => {
 	const sid = event.cookies.get(SESSION_COOKIE);
 	event.locals.user = sid ? getSessionUser(sid, event.cookies) : null;
 
-	const path = event.url.pathname;
+	// SvelteKit resolves routes against a decoded pathname, while
+	// `event.url.pathname` keeps percent-encoding. Gate on a decoded view (and
+	// the raw one) — stricter than the router — so encoded spellings cannot
+	// skip the admin check (AUD-01).
+	const path = decodePathname(event.url.pathname);
 	const isApi = path.startsWith('/api/') || path.startsWith('/arrapi/');
-	const needsAdmin = ADMIN_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
+	const needsAdmin = isAdminPath(event.url.pathname);
 
 	if (needsAdmin) {
 		if (!hasAnyUser()) {

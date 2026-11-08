@@ -10,24 +10,14 @@ import {
 import { logActivity } from '$lib/server/auth';
 import { ArrError } from '$lib/arr/types';
 import type { ArrServiceType } from '$lib/arr/types';
+import {
+	presetInputNeedsLiveOptions,
+	validatePresetInput,
+	type PresetInput,
+	type PresetOptions
+} from '$lib/arr/preset-input';
 
-type PresetInput = {
-	name?: string;
-	qualityProfileId?: number;
-	rootFolderPath?: string;
-	monitored?: boolean;
-	tags?: number[];
-	minimumAvailability?: string | null;
-	searchOnAdd?: boolean;
-	seriesTypeDefault?: string | null;
-	seasonMonitorPolicy?: string | null;
-	isDefault?: boolean;
-};
-
-const SERIES_TYPES = ['standard', 'daily', 'anime'];
-const SEASON_POLICIES = ['all', 'none', 'first', 'latest'];
-
-async function options(service: ArrServiceType) {
+async function options(service: ArrServiceType): Promise<PresetOptions> {
 	const client = getClient(service);
 	const [qualityProfiles, rootFolders, tags] = await Promise.all([
 		client.qualityProfiles(),
@@ -47,46 +37,18 @@ function serviceFrom(url: URL): { service: ArrServiceType; serviceId: number } |
 	return { service, serviceId: svc.id };
 }
 
-function validate(input: PresetInput): string | null {
-	if (input.name !== undefined && (typeof input.name !== 'string' || !input.name.trim())) {
-		return 'name is required';
-	}
-	if (input.qualityProfileId !== undefined && (!Number.isInteger(input.qualityProfileId) || input.qualityProfileId <= 0)) {
-		return 'qualityProfileId must be a positive integer';
-	}
-	if (input.rootFolderPath !== undefined && (typeof input.rootFolderPath !== 'string' || !input.rootFolderPath.trim())) {
-		return 'rootFolderPath must be a non-empty string';
-	}
-	if (input.tags !== undefined && (!Array.isArray(input.tags) || !input.tags.every((n) => Number.isInteger(n) && n > 0))) {
-		return 'tags must be an array of positive tag ids';
-	}
-	if (input.monitored !== undefined && typeof input.monitored !== 'boolean') {
-		return 'monitored must be a boolean';
-	}
-	if (input.searchOnAdd !== undefined && typeof input.searchOnAdd !== 'boolean') {
-		return 'searchOnAdd must be a boolean';
-	}
-	if (input.isDefault !== undefined && typeof input.isDefault !== 'boolean') {
-		return 'isDefault must be a boolean';
-	}
-	if (input.minimumAvailability !== undefined && input.minimumAvailability !== null && typeof input.minimumAvailability !== 'string') {
-		return 'minimumAvailability must be a string';
-	}
-	if (
-		input.seriesTypeDefault !== undefined &&
-		input.seriesTypeDefault !== null &&
-		!SERIES_TYPES.includes(input.seriesTypeDefault)
-	) {
-		return `seriesTypeDefault must be one of ${SERIES_TYPES.join(', ')}`;
-	}
-	if (
-		input.seasonMonitorPolicy !== undefined &&
-		input.seasonMonitorPolicy !== null &&
-		!SEASON_POLICIES.includes(input.seasonMonitorPolicy)
-	) {
-		return `seasonMonitorPolicy must be one of ${SEASON_POLICIES.join(', ')}`;
-	}
-	return null;
+/**
+ * Validate arr-side targeting against the *connected instance*, not just the
+ * shape of the JSON. A preset pointing at a deleted quality profile or root
+ * folder saves cleanly but breaks every member Add (AUD-06).
+ */
+async function liveValidationError(
+	input: PresetInput,
+	service: ArrServiceType
+): Promise<string | null> {
+	if (!presetInputNeedsLiveOptions(input)) return null;
+	const live = await options(service);
+	return validatePresetInput(input, service, live);
 }
 
 /** GET /api/presets?service=radarr — presets + live arr-side dropdown options. */
@@ -116,11 +78,24 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
-	const invalid = validate(body);
+	const invalid = validatePresetInput(body, parsed.service);
 	if (invalid) return json({ error: invalid }, { status: 400 });
 	if (body.qualityProfileId === undefined || !body.rootFolderPath || !body.name) {
 		return json({ error: 'name, qualityProfileId and rootFolderPath are required' }, { status: 400 });
 	}
+	let liveMismatch: string | null;
+	try {
+		liveMismatch = await liveValidationError(body, parsed.service);
+	} catch (err) {
+		if (err instanceof ArrError) {
+			return json(
+				{ error: 'Could not load the connected instance to verify this preset — try again.' },
+				{ status: 502 }
+			);
+		}
+		throw err;
+	}
+	if (liveMismatch) return json({ error: liveMismatch }, { status: 400 });
 
 	let insert: { lastInsertRowid: unknown; changes: unknown };
 	try {
@@ -181,8 +156,22 @@ export const PATCH: RequestHandler = async ({ request, url, locals }) => {
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
-	const invalid = validate(body);
+	const invalid = validatePresetInput(body, parsed.service);
 	if (invalid) return json({ error: invalid }, { status: 400 });
+
+	let liveMismatch: string | null;
+	try {
+		liveMismatch = await liveValidationError(body, parsed.service);
+	} catch (err) {
+		if (err instanceof ArrError) {
+			return json(
+				{ error: 'Could not load the connected instance to verify this preset — try again.' },
+				{ status: 502 }
+			);
+		}
+		throw err;
+	}
+	if (liveMismatch) return json({ error: liveMismatch }, { status: 400 });
 
 	try {
 		db.exec('BEGIN');

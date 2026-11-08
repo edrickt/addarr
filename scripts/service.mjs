@@ -790,9 +790,16 @@ function startService() {
 	}
 }
 
-function verifyStopped() {
+function verifyStopped(previousPid = null) {
 	const pid = platform?.running?.();
 	if (pid) { console.error(`Stop failed — Addarr still running (pid ${pid}).`); return false; }
+	// Windows `stop()` removes the PID file as part of stopping, so running()
+	// reports "not running" even if the process survived. Probe the pid captured
+	// before stopping to avoid reporting a false success (AUD-14 follow-up).
+	if (IS_WIN && previousPid && pidAlive(previousPid)) {
+		console.error(`Stop failed — Addarr still running (pid ${previousPid}).`);
+		return false;
+	}
 	return true;
 }
 
@@ -811,6 +818,7 @@ function printStatus() {
 }
 
 async function commandStart() {
+	refuseRoot();
 	ensureDataDir();
 	if (!platform) {
 		console.log('No service manager on this platform — starting in the foreground instead.');
@@ -852,6 +860,7 @@ async function commandStart() {
 }
 
 async function commandRestart() {
+	refuseRoot();
 	if (!platform) return printStatus();
 	if (!platform.running()) {
 		console.log('Addarr was not running — starting it.');
@@ -864,6 +873,7 @@ async function commandRestart() {
 }
 
 async function commandOpen() {
+	refuseRoot();
 	if (platform && !platform.running() && !(await portBusy())) {
 		console.log('Addarr is not running — starting it…');
 		if (!platform.installed?.()) platform.install();
@@ -923,20 +933,36 @@ async function main() {
 		case 'restart':
 			await commandRestart();
 			break;
-		case 'stop':
+		case 'stop': {
+			const previousPid = platform?.running?.() ?? null;
 			platform?.stop();
+			// Report success only when the process is actually gone (AUD-14).
+			if (!verifyStopped(previousPid)) {
+				process.exitCode = 1;
+				break;
+			}
 			console.log('Addarr stopped. Start it again with npm start or the app icon.');
 			break;
+		}
 		case 'status':
 			process.exitCode = printStatus();
 			break;
 		case 'logs':
 			commandLogs();
 			break;
-		case 'uninstall':
+		case 'uninstall': {
+			const previousPid = platform?.running?.() ?? null;
 			platform?.uninstall();
+			// The service files are gone, but a surviving process means the removal
+			// did not fully take effect (AUD-14).
+			if (!verifyStopped(previousPid)) {
+				console.log('Addarr files removed, but the server process is still running — stop it with npm run stop.');
+				process.exitCode = 1;
+				break;
+			}
 			console.log('Addarr service and app icon removed. Your data in data/addarr.db is untouched.');
 			break;
+		}
 		default:
 			console.log(`Unknown command: ${command}\nUse: start | stop | restart | status | logs | open | uninstall`);
 			process.exitCode = 1;

@@ -1,5 +1,5 @@
 import { argon2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
-import { db } from './db';
+import { db } from './db.ts';
 import type { Cookies } from '@sveltejs/kit';
 
 /**
@@ -62,7 +62,13 @@ export function hasAnyUser(): boolean {
 	return row?.any === 1;
 }
 
-const DUMMY_HASH = (() => { try { return hashPin('000000'); } catch { return 'AA:AA'; } })();
+/**
+ * A real argon2id hash of a fixed PIN, used to give unknown/disabled usernames
+ * the same verification cost as real ones. Computing the hash per request
+ * would double the work (and leak the difference), so it is computed once
+ * (AUD-08).
+ */
+export const DUMMY_HASH = (() => { try { return hashPin('000000'); } catch { return 'AA:AA'; } })();
 
 export function getUserByUsername(username: string): UserRow | undefined {
 	return db.prepare(`SELECT * FROM users WHERE username = ?`).get(username) as UserRow | undefined;
@@ -133,7 +139,10 @@ export function createSession(
 }
 
 export function pruneExpiredSessions(): void {
-	try { db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run(); } catch { /* best-effort */ }
+	// expires_at is stored as an ISO-8601 string (`toISOString()`); comparing it
+	// against SQLite's space-separated `datetime('now')` never matches on the
+	// same day because 'T' sorts above ' ' (AUD-09).
+	try { db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(new Date().toISOString()); } catch { /* best-effort */ }
 }
 
 export function destroySession(sid: string, cookies: Cookies): void {

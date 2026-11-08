@@ -1,12 +1,12 @@
 import { ArrClient } from './client.ts';
 import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.ts';
-import { movieStatus } from './status.ts';
+import { isPursuitState, movieStatus } from './status.ts';
 
 /** Radarr API v3 adapter. Verified field names against Radarr source:
  *  MovieLookupController (GET /movie/lookup?term=), MovieController (POST /movie),
  *  AddMovieOptions (SearchForMovie). */
 
-type RadarrMovie = {
+export type RadarrMovie = {
 	id?: number;
 	title: string;
 	year?: number;
@@ -147,6 +147,7 @@ export class RadarrClient extends ArrClient {
 			.map((m) => {
 				const known = byTmdb.get(m.tmdbId);
 				const rows = known ? queue.filter((q) => q.movieId === known.id) : [];
+				const status = known ? movieStatus(known, rows) : undefined;
 				return {
 					sourceId: m.tmdbId,
 					title: m.title,
@@ -155,7 +156,13 @@ export class RadarrClient extends ArrClient {
 					posterUrl: posterUrl(m.images),
 					inLibrary: !!known,
 					id: known?.id,
-					status: known ? movieStatus(known, rows) : undefined
+					// An unmonitored title with no queue activity is not being
+					// pursued: keep truthful states (available, queue progress) but
+					// never claim it is missing/unreleased (AUD-05).
+					status:
+						known?.monitored === false && rows.length === 0 && status && isPursuitState(status.state)
+							? undefined
+							: status
 				};
 			});
 	}

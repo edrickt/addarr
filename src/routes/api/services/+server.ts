@@ -6,6 +6,7 @@ import { SonarrClient } from '$lib/arr/sonarr';
 import { ArrError } from '$lib/arr/types';
 import type { ArrServiceType } from '$lib/arr/types';
 import { ensureDefaultPreset } from '$lib/server/presets';
+import { normalizeServiceBaseUrl } from '$lib/arr/service-url';
 
 /** GET /api/services — configured services (API keys masked). */
 export const GET: RequestHandler = async () => {
@@ -30,16 +31,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'name, baseUrl and apiKey are required' }, { status: 400 });
 	}
 
-	let normalizedUrl: URL;
-	try {
-		normalizedUrl = new URL(body.baseUrl.trim());
-	} catch {
-		return json({ error: 'baseUrl must be a valid URL, e.g. http://192.168.1.10:7878' }, { status: 400 });
-	}
-
-	// Preserve reverse-proxy subpaths (e.g. https://host/radarr); strip only trailing slashes (F-SETTINGS-03).
-	const baseWithoutSlash = `${normalizedUrl.origin}${normalizedUrl.pathname.replace(/\/+$/, '')}`;
-	const baseUrl = baseWithoutSlash === normalizedUrl.origin + '' ? normalizedUrl.origin : baseWithoutSlash;
+	// Preserve reverse-proxy subpaths (e.g. https://host/radarr); strip only
+	// trailing slashes (F-SETTINGS-03). Reject non-HTTP(S) schemes up front —
+	// otherwise a `file://` URL reaches fetch as `null/etc/passwd` (AUD-12).
+	const normalized = normalizeServiceBaseUrl(body.baseUrl);
+	if ('error' in normalized) return json({ error: normalized.error }, { status: 400 });
+	const baseUrl = normalized.baseUrl;
 
 	// Probe before saving — never store a connection we cannot reach.
 	const client =
@@ -62,7 +59,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			ok: true,
 			appVersion: status.version,
 			appName: status.appName,
-			defaultPreset: preset.created ? 'created' : preset.note ?? 'exists'
+			defaultPreset: preset.created ? preset.note ?? 'created' : preset.note ?? 'exists'
 		});
 	} catch (err) {
 		if (err instanceof ArrError) {

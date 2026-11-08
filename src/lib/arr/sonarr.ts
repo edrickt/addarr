@@ -1,7 +1,7 @@
 import { ArrClient } from './client.ts';
 import { buildAddResource, type SonarrSeries } from './add-resource.ts';
 import { posterUrl, type AddDefaults, type ArrSystemStatus, type PosterCard } from './types.ts';
-import { seriesStatus } from './status.ts';
+import { isPursuitState, seriesStatus } from './status.ts';
 
 /** Sonarr API v3 adapter. Verified field names against Sonarr source:
  *  SeriesLookupController (GET /series/lookup?term=), SeriesController (POST /series),
@@ -133,6 +133,7 @@ export class SonarrClient extends ArrClient {
 			.map((s) => {
 				const known = byTvdb.get(s.tvdbId);
 				const rows = known ? queue.filter((q) => q.seriesId === known.id) : [];
+				const status = known ? seriesStatus(known, rows) : undefined;
 				return {
 					sourceId: s.tvdbId,
 					title: s.title,
@@ -141,7 +142,13 @@ export class SonarrClient extends ArrClient {
 					posterUrl: posterUrl(s.images),
 					inLibrary: !!known,
 					id: known?.id,
-					status: known ? seriesStatus(known, rows) : undefined,
+					// An unmonitored title with no queue activity is not being
+					// pursued: keep truthful states (available, queue progress) but
+					// never claim it is missing/partial (AUD-05).
+					status:
+						known?.monitored === false && rows.length === 0 && status && isPursuitState(status.state)
+							? undefined
+							: status,
 					seriesType: s.seriesType
 				};
 			});

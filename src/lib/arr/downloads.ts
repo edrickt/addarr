@@ -43,7 +43,7 @@ export type DownloadLibraryItem = {
 	title?: string;
 	year?: number;
 	images?: { coverType: string; url?: string; remoteUrl?: string }[];
-	statistics?: { episodeFileCount?: number; totalEpisodeCount?: number };
+	statistics?: { episodeFileCount?: number; episodeCount?: number; totalEpisodeCount?: number };
 };
 
 function queueItemId(kind: ArrMediaKind, row: QueueRow): number | null {
@@ -92,9 +92,12 @@ function sumField(rows: QueueRow[], keys: string[]): number | null {
 
 function seriesEpisodes(item: DownloadLibraryItem | undefined): { have: number; total: number } | null {
 	const have = Number(item?.statistics?.episodeFileCount ?? 0);
-	const total = Number(item?.statistics?.totalEpisodeCount ?? 0);
-	return Number.isFinite(total) && total > 0
-		? { have: Number.isFinite(have) ? Math.max(0, have) : 0, total }
+	// Aired episodes are the member-truthful denominator: `totalEpisodeCount`
+	// includes episodes that have not aired yet, so a currently airing series
+	// that is caught up would read as incomplete (AUD-04).
+	const aired = Number(item?.statistics?.episodeCount ?? item?.statistics?.totalEpisodeCount ?? 0);
+	return Number.isFinite(aired) && aired > 0
+		? { have: Number.isFinite(have) ? Math.max(0, have) : 0, total: aired }
 		: null;
 }
 

@@ -1,5 +1,6 @@
 import { db, getServiceByType, type ServiceRow } from './db';
 import { getClient } from './arr-factory';
+import { planPresetRepair, presetIsUsable } from '$lib/arr/preset-input';
 import type { AddDefaults, ArrServiceType } from '$lib/arr/types';
 
 /**
@@ -102,19 +103,31 @@ export async function ensureDefaultPreset(
 	const svc = getServiceByType(type);
 	if (!svc) return { created: false, note: 'service not configured' };
 
-	const existing = getDefaultPresetRow(svc.id);
-	if (existing && existing.quality_profile_id > 0) return { created: false };
-
 	try {
+		// Check the stored default against the *live* instance: a profile or root
+		// folder can be deleted in the arr after the preset was created, which
+		// leaves the member Add button failing upstream after a reconnect
+		// (AUD-07 / F-PRESET-04).
 		const client = getClient(type);
 		const [profiles, folders] = await Promise.all([client.qualityProfiles(), client.rootFolders()]);
 		if (profiles.length === 0 || folders.length === 0) {
 			return { created: false, note: `${type} has no quality profile or root folder yet` };
 		}
-		// Repair an unusable default in place instead of inserting a duplicate 'Default' (F-PRESET-04).
+		const existing = getDefaultPresetRow(svc.id);
+		if (existing && presetIsUsable(existing, profiles, folders)) return { created: false };
+		// Repair an unusable default in place instead of inserting a duplicate
+		// 'Default'. Only the field(s) that stopped resolving are replaced, so a
+		// still-valid quality profile/root folder choice is preserved (AUD-07
+		// follow-up).
 		if (existing) {
-			db.prepare(`UPDATE presets SET quality_profile_id = ?, root_folder_path = ?, is_default = 1 WHERE id = ?`).run(profiles[0].id, folders[0].path, existing.id);
-			return { created: true };
+			const repair = planPresetRepair(existing, profiles, folders);
+			if (!repair) return { created: false };
+			db.prepare(`UPDATE presets SET quality_profile_id = ?, root_folder_path = ?, is_default = 1 WHERE id = ?`).run(
+				repair.qualityProfileId,
+				repair.rootFolderPath,
+				existing.id
+			);
+			return { created: true, note: 'repaired' };
 		}
 		db.prepare(
 			`INSERT INTO presets (

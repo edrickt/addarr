@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	createSession,
+	DUMMY_HASH,
 	getUserByUsername,
 	isValidPin,
 	isValidUsername,
@@ -9,7 +10,6 @@ import {
 	pruneExpiredSessions,
 	verifyPin
 } from '$lib/server/auth';
-import { hashPin } from '$lib/server/auth';
 
 /** POST /api/auth/login — { username, pin } → session cookie. */
 
@@ -73,8 +73,9 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 
 	const user = getUserByUsername(body.username);
 	if (!user || user.disabled === 1) {
-		// Constant-time dummy verify so missing/disabled accounts cost the same as real ones (F-AUTH-03).
-		try { verifyPin(body.pin, hashPin('000000')); } catch { /* ignore */ }
+		// Same verify cost as a real account: one argon2id verification against a
+		// fixed hash (AUD-08 / F-AUTH-03).
+		try { verifyPin(body.pin, DUMMY_HASH); } catch { /* ignore */ }
 		recordFailure(key);
 		try { logActivity({ userId: null, serviceId: null, action: 'auth.login.failure', title: String(body.username ?? '') }); } catch { /* best-effort */ }
 		return json({ error: 'Wrong username or PIN' }, { status: 401 });

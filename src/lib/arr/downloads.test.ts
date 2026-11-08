@@ -58,6 +58,54 @@ test('groups queue rows into one title and sums transfer details', () => {
 	});
 });
 
+test('AUD-04: series episode counts use aired episodes, not future episodes', () => {
+	const items = buildDownloadItems(
+		'series',
+		[
+			{
+				id: 7,
+				title: 'Severance',
+				statistics: { episodeFileCount: 10, episodeCount: 10, totalEpisodeCount: 20 }
+			}
+		],
+		[{ seriesId: 7, status: 'downloading', size: 100, sizeleft: 50 }]
+	);
+
+	assert.deepEqual(items[0]?.episodes, { have: 10, total: 10 });
+});
+
+test('AUD-04: falls back to totalEpisodeCount when the aired count is absent', () => {
+	const items = buildDownloadItems(
+		'series',
+		[{ id: 8, title: 'Old API', statistics: { episodeFileCount: 4, totalEpisodeCount: 10 } }],
+		[{ seriesId: 8, status: 'downloading', size: 10, sizeleft: 5 }]
+	);
+
+	assert.deepEqual(items[0]?.episodes, { have: 4, total: 10 });
+});
+
+test('AUD-04: nested queue series statistics use the aired count too', () => {
+	const items = buildDownloadItems(
+		'series',
+		[],
+		[
+			{
+				seriesId: 9,
+				status: 'queued',
+				size: 10,
+				sizeleft: 10,
+				series: {
+					id: 9,
+					title: 'Silo',
+					statistics: { episodeFileCount: 6, episodeCount: 6, totalEpisodeCount: 12 }
+				}
+			}
+		]
+	);
+
+	assert.deepEqual(items[0]?.episodes, { have: 6, total: 6 });
+});
+
 test('aggregateQueue reports lowercase sizeleft bytes for the status sheet', () => {
 	const status = aggregateQueue([
 		{ status: 'downloading', size: 1000, sizeleft: 400, timeleft: '00:10:00' }

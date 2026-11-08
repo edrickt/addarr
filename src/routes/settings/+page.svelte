@@ -161,17 +161,23 @@
 				body: JSON.stringify({ enabled: !lan.enabled })
 			});
 			const data = await res.json();
-			if (!res.ok) {
+			// `ok:true, broadcasting:false, restartRequired:true` is the normal
+			// response when Addarr is bound to localhost and the bind only changes
+			// on restart — the discovery-failed case is a non-2xx with `error`
+			// (AUD-06 follow-up).
+			if (!res.ok || data.error) {
 				lanStatus = { kind: 'error', text: data.error ?? 'Failed' };
-			} else if (data.enabled && data.broadcasting === false) {
-				lanStatus = { kind: 'error', text: 'LAN is on, but discovery failed — check the server log.' };
 			} else {
 				lanStatus = { kind: 'ok', text: data.message ?? (data.broadcasting ? 'Broadcasting on the LAN.' : 'LAN sharing off.') };
 			}
-			if (res.ok) await loadLan();
 		} catch {
 			lanStatus = { kind: 'error', text: 'Request failed' };
 		} finally {
+			// Re-read the persisted state even after a failure: the server may have
+			// saved the preference before the broadcast failed, and the checkbox
+			// would otherwise keep an unchecked/checked state that no longer
+			// matches the saved setting (AUD-10).
+			await loadLan();
 			lanBusy = false;
 		}
 	}

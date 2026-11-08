@@ -57,7 +57,7 @@ http.createServer(async (req, res) => {
 		return j(res, 201, m);
 	}
 	j(res, 404, {});
-}, '127.0.0.1').listen(8787, () => console.log('mock radarr on :8787'));
+}).listen(8787, '127.0.0.1', () => console.log('mock radarr on :8787'));
 
 // ---------------------------------------------------------------- Sonarr
 const series = [];
@@ -102,4 +102,4 @@ http.createServer(async (req, res) => {
 	}
 	if (p === '/api/v3/queue') return j(res, 200, { records: sonarrQueue });
 	j(res, 404, {});
-}, '127.0.0.1').listen(8788, () => console.log('mock sonarr on :8788'));
+}).listen(8788, '127.0.0.1', () => console.log('mock sonarr on :8788'));
