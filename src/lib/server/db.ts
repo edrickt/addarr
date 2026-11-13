@@ -1,11 +1,27 @@
 import { DatabaseSync } from 'node:sqlite';
-import { chmodSync, mkdirSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const DB_PATH = process.env.ADDARR_DB ?? join(process.cwd(), 'data', 'addarr.db');
 
-mkdirSync(dirname(DB_PATH), { recursive: true, mode: 0o700 });
-try { chmodSync(dirname(DB_PATH), 0o700); } catch { /* best-effort on Windows */ }
+/**
+ * Create/secure the database's directory. Only a directory Addarr creates is
+ * tightened to 0700: `ADDARR_DB` may point into an existing directory shared
+ * with other services (e.g. /srv/media), and chmodding that parent would break
+ * their access. The database file itself is always chmodded 0600 below.
+ */
+export function ensurePrivateDataDir(dirPath: string): void {
+	const existed = existsSync(dirPath);
+	mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+	if (existed) return;
+	try {
+		chmodSync(dirPath, 0o700);
+	} catch {
+		/* best-effort on Windows */
+	}
+}
+
+ensurePrivateDataDir(dirname(DB_PATH));
 
 export const db = new DatabaseSync(DB_PATH);
 

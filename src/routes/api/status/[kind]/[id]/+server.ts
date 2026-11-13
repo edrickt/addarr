@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	if (kind !== 'movie' && kind !== 'series') {
 		return json({ error: 'kind must be "movie" or "series"' }, { status: 400 });
 	}
-	if (!Number.isInteger(id)) return json({ error: 'invalid id' }, { status: 400 });
+	if (!Number.isInteger(id) || id <= 0) return json({ error: 'invalid id' }, { status: 400 });
 
 	try {
 		const client = getClient(kind === 'movie' ? 'radarr' : 'sonarr');

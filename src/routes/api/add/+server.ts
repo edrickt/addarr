@@ -113,6 +113,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	} catch (err) {
 		if (err instanceof ArrError) {
 			console.error(`[add] upstream failure:`, err.message);
+			// An arr 4xx means the library rejected this add (stale preset, bad
+			// key, duplicate race) — not that it is down. Reporting an outage made
+			// members retry pointlessly and hid the admin-side cause (AUD-05).
+			if (err.status >= 400 && err.status < 500) {
+				return json(
+					{
+						error:
+							'Could not add — the library rejected this request. Ask an admin to check the default preset and connection.'
+					},
+					{ status: 400 }
+				);
+			}
 			return json({ error: 'Could not add — the library is not responding right now' }, { status: 502 });
 		}
 		console.error(`[add] failed:`, err);

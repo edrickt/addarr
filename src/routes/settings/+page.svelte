@@ -245,7 +245,7 @@
 				disabled={lanBusy || lan.forced}
 				onchange={toggleLan}
 			/>
-			Share on LAN (discoverable via mDNS/Bonjour as “Addarr”)
+			Share on LAN (discoverable via mDNS/Bonjour)
 		</label>
 		<p class="hint">
 			{#if lan.forced}

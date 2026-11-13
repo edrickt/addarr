@@ -176,7 +176,7 @@ ADDARR_DB=/path/to/addarr.db npm start   # custom data file location
 By default Addarr binds to `localhost` only, so nothing else on the network can reach it. To share it, sign in as admin and go to **Settings → Network → Share on LAN**. When enabled, Addarr:
 
 - becomes reachable from other devices at `http://<your-machine-ip>:4545` (the address is printed in the startup log), and
-- broadcasts itself over mDNS/Bonjour as **"Addarr"**, so it shows up in network discovery (for example Safari's Bonjour list or an Avahi browser).
+- broadcasts itself over mDNS/Bonjour as **"Addarr on <hostname>"**, so it shows up in network discovery (for example Safari's Bonjour list or an Avahi browser).
 
 Enabling the setting takes effect for discovery immediately. If the server was started in localhost-only mode, one restart is needed to open the network bind. The app tells you when that is the case.
 
@@ -259,7 +259,7 @@ data/addarr.db         SQLite data file (created at runtime, not checked in)
 | Framework | SvelteKit (SSR) | server routes double as the internal API; minimal client JS |
 | Database | SQLite via `node:sqlite` | zero-config, file-based, zero native deps |
 | Styling | Plain CSS with semantic tokens | zero deps, full control for the Precision theme |
-| Discovery | `bonjour-service` | mDNS/Bonjour broadcast as "Addarr" for LAN discovery |
+| Discovery | `bonjour-service` | mDNS/Bonjour broadcast as "Addarr on <hostname>" for LAN discovery |
 | Fonts | Inter (self-hosted) | part of the Precision visual identity |
 | Deploy | Single command launch (`npm start`) | install + build + per-user background service, OS-agnostic |
 

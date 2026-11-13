@@ -126,7 +126,7 @@ async function startBroadcast() {
 			const ipv6 = host === '0.0.0.0' || host === '::' ? false : host.includes(':');
 			bonjour.publish({ name: MDNS_NAME, type: 'http', port, host: os.hostname(), disableIPv6: !ipv6 });
 			published = true;
-			console.log('Broadcasting on the LAN via mDNS (Bonjour) as "Addarr".');
+			console.log(`Broadcasting on the LAN via mDNS (Bonjour) as "${MDNS_NAME}".`);
 		} catch (err) {
 			console.warn(`mDNS broadcast unavailable (${err?.message ?? err}) — continuing without discovery.`);
 		}

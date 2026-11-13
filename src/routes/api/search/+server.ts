@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getClient } from '$lib/server/arr-factory';
+import { getServiceByType } from '$lib/server/db';
 import { RadarrClient } from '$lib/arr/radarr';
 import { SonarrClient } from '$lib/arr/sonarr';
 import { ArrError } from '$lib/arr/types';
@@ -15,6 +16,13 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 	if (!q) {
 		return json({ error: 'q (search term) is required' }, { status: 400 });
+	}
+
+	// A household may connect only Radarr or only Sonarr. "Not configured" is a
+	// normal state the member page skips, not a search failure (AUD-03).
+	const type = kind === 'movie' ? 'radarr' : 'sonarr';
+	if (!getServiceByType(type)) {
+		return json({ service: type, results: [], unconfigured: true });
 	}
 
 	try {

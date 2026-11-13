@@ -8,7 +8,19 @@
 //   POST /__mock/sonarr/queue     body: array of queue records
 import http from 'node:http';
 const j = (r, c, b) => { r.writeHead(c, { 'Content-Type': 'application/json' }); r.end(JSON.stringify(b)); };
-const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b ? JSON.parse(b) : null)); });
+// Parse errors reject instead of throwing inside the 'end' event handler,
+// which would crash the whole mock process (the route's try/catch answers 400).
+const readBody = (req) => new Promise((resolve, reject) => {
+	let b = '';
+	req.on('data', (c) => (b += c));
+	req.on('end', () => {
+		try {
+			resolve(b ? JSON.parse(b) : null);
+		} catch (err) {
+			reject(err);
+		}
+	});
+});
 
 const profiles = [{ id: 1, name: 'HD' }];
 const folders = [{ id: 1, path: '/data/movies' }];

@@ -2,6 +2,7 @@
 	import type { PosterCard } from '$lib/arr/types';
 	import type { ArrItemState } from '$lib/arr/status';
 	import type { DownloadDetail } from '$lib/arr/downloads';
+	import { mergeSearchResponses } from '$lib/arr/search-merge';
 	import DownloadSheet from '$lib/components/DownloadSheet.svelte';
 	import {
 		initials,
@@ -89,53 +90,26 @@
 			);
 			if (seq !== searchSeq) return;
 
-			const merged: Result[] = [];
-			let firstError: string | null = null;
-			let failedKind: 'movie' | 'series' | null = null;
-			settled.forEach((s, i) => {
-				if (s.status === 'fulfilled' && Array.isArray(s.value.results)) {
-					for (const card of s.value.results as PosterCard[]) {
-						// In-library items carry their real *arr state — wire them into
-						// the same watch fields so the poller keeps them live.
-						merged.push({
-							...card,
-							kind: kinds[i],
-							watchId: card.status ? card.id : undefined,
-							watchStatus: card.status?.state,
-							watchProgress: card.status?.progress ?? null,
-							watchTimeLeft: card.status?.timeLeftSeconds ?? null,
-							watchSize: card.status?.size ?? null,
-							watchSizeLeft: card.status?.sizeLeft ?? null,
-							watchEpisodes: card.status?.episodes ?? null
-						});
-					}
-				} else {
-					failedKind = kinds[i];
-					if (!firstError) {
-						firstError =
-							s.status === 'fulfilled'
-								? (s.value.error ?? 'Search failed')
-								: 'Search failed — try again';
-					}
-				}
-			});
-			results = merged;
+			// The merge (skip not-connected libraries, error/partial-error
+			// precedence) lives in $lib/arr/search-merge so it is unit-tested.
+			const merged = mergeSearchResponses(kinds, settled);
+			results = merged.cards.map((card) => ({
+				...card,
+				// In-library items carry their real *arr state — wire them into the
+				// same watch fields so the poller keeps them live.
+				watchId: card.status ? card.id : undefined,
+				watchStatus: card.status?.state,
+				watchProgress: card.status?.progress ?? null,
+				watchTimeLeft: card.status?.timeLeftSeconds ?? null,
+				watchSize: card.status?.size ?? null,
+				watchSizeLeft: card.status?.sizeLeft ?? null,
+				watchEpisodes: card.status?.episodes ?? null
+			}));
+			error = merged.error;
+			partialError = merged.partialError;
 			// Announce the result count — the only way a screen-reader user
 			// knows the grid changed.
-			announce = merged.length === 0 ? 'Nothing found' : `${merged.length} results`;
-			if (merged.length === 0) {
-				error = firstError;
-				partialError = null;
-			} else if (failedKind) {
-				error = null;
-				partialError =
-					failedKind === 'movie'
-						? "Couldn't reach the movie library — showing series instead."
-						: "Couldn't reach the series library — showing movies instead.";
-			} else {
-				error = null;
-				partialError = null;
-			}
+			announce = results.length === 0 ? 'Nothing found' : `${results.length} results`;
 			loading = false;
 		}, 350);
 		return () => clearTimeout(timer);
