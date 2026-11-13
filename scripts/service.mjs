@@ -275,7 +275,9 @@ ${plistDict({
 }
 
 function macWriteApp() {
-	const { icnsPath } = ensureIcons();
+	// The icon is cosmetic: a failed generation must not abort the install.
+	let icnsPath = null;
+	try { ({ icnsPath } = ensureIcons()); } catch (err) { console.warn(`Icons unavailable, continuing without them: ${err?.message ?? err}`); }
 	rmSync(MAC_APP, { recursive: true, force: true });
 	mkdirSync(join(MAC_APP, 'Contents', 'MacOS'), { recursive: true });
 	mkdirSync(join(MAC_APP, 'Contents', 'Resources'), { recursive: true });
@@ -654,7 +656,10 @@ try {
 }
 
 function winWriteLauncher() {
-	const { icoPath, png32Path } = ensureIcons();
+	// The icon is cosmetic: a failed generation must not abort the install.
+	let icoPath = null;
+	let png32Path = '';
+	try { ({ icoPath, png32Path } = ensureIcons()); } catch (err) { console.warn(`Icons unavailable, continuing without them: ${err?.message ?? err}`); }
 	mkdirSync(WIN_DIR, { recursive: true });
 	mkdirSync(dirname(WIN_STARTUP), { recursive: true });
 

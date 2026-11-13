@@ -22,7 +22,7 @@ after(() => {
 
 const mode = (path: string): number => statSync(path).mode & 0o777;
 
-test('AUD-10: an existing user-provided data directory keeps its permissions', () => {
+test('AUD-06: an existing user-provided data directory keeps its permissions', () => {
 	// ADDARR_DB may live in a directory shared with other services (e.g.
 	// /srv/media). Addarr must secure its own files, not chmod the parent.
 	const shared = mkdtempSync(join(tmpdir(), 'addarr-shared-'));
@@ -35,7 +35,7 @@ test('AUD-10: an existing user-provided data directory keeps its permissions', (
 	}
 });
 
-test('AUD-10: a directory Addarr creates itself is private', () => {
+test('AUD-06: a directory Addarr creates itself is private', () => {
 	const created = join(dir, 'created-by-addarr', 'data');
 	ensurePrivateDataDir(created);
 	assert.equal(mode(created), 0o700);

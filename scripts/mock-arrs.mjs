@@ -63,7 +63,11 @@ http.createServer(async (req, res) => {
 	}
 	if (p === '/api/v3/queue') return j(res, 200, { records: radarrQueue });
 	if (p === '/api/v3/movie' && req.method === 'POST') {
-		const m = await readBody(req);
+		// Like the /__mock routes: a malformed body must answer 400, not throw
+		// inside this async handler and kill the whole mock process.
+		let m = null;
+		try { m = await readBody(req); } catch { return j(res, 400, { error: 'invalid JSON' }); }
+		if (m == null || typeof m !== 'object') return j(res, 400, { error: 'object body required' });
 		m.id = 500 + movies.length;
 		movies.push(m);
 		return j(res, 201, m);

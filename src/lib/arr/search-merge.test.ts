@@ -54,6 +54,26 @@ test('AUD-03: no connected service reports that settings are unfinished', () => 
 	assert.equal(merged.partialError, null);
 });
 
+test('AUD-03-R: a connected library with zero matches is "nothing found", not a setup error', () => {
+	// One-service household whose connected arr simply has no match for the
+	// term: the red "library is not connected yet" alert must not appear.
+	const merged = mergeSearchResponses(
+		KINDS,
+		settled([{ results: [] }, { results: [], unconfigured: true }])
+	);
+
+	assert.deepEqual(merged.cards, []);
+	assert.equal(merged.error, null, 'a connected, empty search is not a setup failure');
+	assert.equal(merged.partialError, null);
+});
+
+test('AUD-03-R: a single requested kind that is not connected still reports settings', () => {
+	const merged = mergeSearchResponses(['series'], settled([{ results: [], unconfigured: true }]));
+
+	assert.deepEqual(merged.cards, []);
+	assert.equal(merged.error, LIBRARY_NOT_CONNECTED);
+});
+
 test('AUD-03: an actually unreachable library still surfaces a partial error', () => {
 	const merged = mergeSearchResponses(
 		KINDS,

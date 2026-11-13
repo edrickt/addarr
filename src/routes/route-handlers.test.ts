@@ -117,8 +117,11 @@ test('AUD-04: status polling rejects non-positive ids instead of inventing "wait
 	}
 });
 
-/** Minimal fake Radarr that rejects every add, like a broken preset would. */
-function rejectingRadarr(): Promise<{ server: Server; baseUrl: string }> {
+type FakeRadarrOptions = { lookupStatus?: number; addStatus?: number };
+
+/** Minimal fake Radarr whose lookup/add answers are configurable per test. */
+function fakeRadarr(options: FakeRadarrOptions = {}): Promise<{ server: Server; baseUrl: string }> {
+	const { lookupStatus = 200, addStatus = 200 } = options;
 	const server = createServer((req, res) => {
 		const send = (status: number, body: unknown) => {
 			res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -126,10 +129,14 @@ function rejectingRadarr(): Promise<{ server: Server; baseUrl: string }> {
 		};
 		if (req.method === 'GET' && req.url === '/api/v3/movie') return send(200, []);
 		if (req.method === 'GET' && req.url?.startsWith('/api/v3/movie/lookup/tmdb')) {
-			return send(200, { tmdbId: 123, title: 'Rejected Movie', year: 2024 });
+			return lookupStatus === 200
+				? send(200, { tmdbId: 123, title: 'Rejected Movie', year: 2024 })
+				: send(lookupStatus, { message: `lookup failed: ${lookupStatus}` });
 		}
 		if (req.method === 'POST' && req.url === '/api/v3/movie') {
-			return send(400, { message: 'Invalid quality profile' });
+			return addStatus === 200
+				? send(201, { id: 1, tmdbId: 123, title: 'Rejected Movie' })
+				: send(addStatus, { message: `add failed: ${addStatus}` });
 		}
 		return send(404, {});
 	});
@@ -142,36 +149,68 @@ function rejectingRadarr(): Promise<{ server: Server; baseUrl: string }> {
 	});
 }
 
-test('AUD-05: an upstream add rejection is not reported as a library outage', async () => {
-	const { server, baseUrl } = await rejectingRadarr();
+function seedRadarr(baseUrl: string): void {
+	db.prepare(
+		`INSERT INTO services (type, name, base_url, api_key, app_version) VALUES ('radarr', 'Radarr', ?, 'k', '5.0.0')`
+	).run(baseUrl);
+	const serviceId = Number(
+		(db.prepare(`SELECT id FROM services WHERE type = 'radarr'`).get() as { id: number }).id
+	);
+	db.prepare(
+		`INSERT INTO presets (service_id, name, is_default, quality_profile_id, root_folder_path)
+		 VALUES (?, 'Default', 1, 1, '/movies')`
+	).run(serviceId);
+}
+
+function clearRadarr(): void {
+	db.prepare(`DELETE FROM presets`).run();
+	db.prepare(`DELETE FROM services`).run();
+}
+
+async function addRequest(): Promise<{ status: number; body: JsonBody }> {
+	const url = new URL('http://localhost/api/add');
+	return callHandler(add.POST, {
+		request: new Request(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ service: 'movie', id: 123 })
+		}),
+		locals: { user: null }
+	});
+}
+
+/** Run one add against a fake Radarr with the given arr answers. */
+async function addAgainst(fake: FakeRadarrOptions): Promise<{ status: number; body: JsonBody }> {
+	const { server, baseUrl } = await fakeRadarr(fake);
+	seedRadarr(baseUrl);
 	try {
-		db.prepare(
-			`INSERT INTO services (type, name, base_url, api_key, app_version) VALUES ('radarr', 'Radarr', ?, 'k', '5.0.0')`
-		).run(baseUrl);
-		const serviceId = Number(
-			(db.prepare(`SELECT id FROM services WHERE type = 'radarr'`).get() as { id: number }).id
-		);
-		db.prepare(
-			`INSERT INTO presets (service_id, name, is_default, quality_profile_id, root_folder_path)
-			 VALUES (?, 'Default', 1, 1, '/movies')`
-		).run(serviceId);
-
-		const url = new URL('http://localhost/api/add');
-		const res = await callHandler(add.POST, {
-			request: new Request(url, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ service: 'movie', id: 123 })
-			}),
-			locals: { user: null }
-		});
-
-		assert.equal(res.status, 400, 'an arr 400 means the add was rejected, not that the library is down');
-		assert.match(String(res.body.error), /rejected|admin/i);
-		assert.doesNotMatch(String(res.body.error), /not responding/);
+		return await addRequest();
 	} finally {
-		db.prepare(`DELETE FROM presets`).run();
-		db.prepare(`DELETE FROM services`).run();
+		clearRadarr();
 		await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
 	}
+}
+
+test('AUD-05: an upstream add rejection is not reported as a library outage', async () => {
+	const res = await addAgainst({ addStatus: 400 });
+
+	assert.equal(res.status, 400, 'an arr 400 means the add was rejected, not that the library is down');
+	assert.match(String(res.body.error), /rejected|admin/i);
+	assert.doesNotMatch(String(res.body.error), /not responding/);
+});
+
+test('AUD-05-R: a lookup 404 is a missing title, not an admin preset problem', async () => {
+	const res = await addAgainst({ lookupStatus: 404 });
+
+	assert.equal(res.status, 404);
+	assert.match(String(res.body.error), /not available/i);
+	assert.doesNotMatch(String(res.body.error), /admin|not responding/i);
+});
+
+test('AUD-05-R: an arr 429 is transient busy, not an admin preset problem', async () => {
+	const res = await addAgainst({ lookupStatus: 429 });
+
+	assert.equal(res.status, 429);
+	assert.match(String(res.body.error), /busy|try again/i);
+	assert.doesNotMatch(String(res.body.error), /admin|not responding/i);
 });

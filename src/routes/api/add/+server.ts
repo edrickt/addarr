@@ -113,9 +113,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	} catch (err) {
 		if (err instanceof ArrError) {
 			console.error(`[add] upstream failure:`, err.message);
-			// An arr 4xx means the library rejected this add (stale preset, bad
-			// key, duplicate race) — not that it is down. Reporting an outage made
-			// members retry pointlessly and hid the admin-side cause (AUD-05).
+			// Classify the arr's answer instead of guessing. A 404 is a title the
+			// library does not have; a 429 is transient back-pressure; any other
+			// 4xx means the add was rejected (stale preset, bad key) and only an
+			// admin can fix it. None of those is "the library is down" (AUD-05).
+			if (err.status === 404) {
+				return json(
+					{ error: 'That title is not available in the library right now.' },
+					{ status: 404 }
+				);
+			}
+			if (err.status === 429) {
+				return json({ error: 'The library is busy — try again in a moment.' }, { status: 429 });
+			}
 			if (err.status >= 400 && err.status < 500) {
 				return json(
 					{

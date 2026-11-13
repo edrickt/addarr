@@ -60,7 +60,11 @@ export function mergeSearchResponses(
 
 	if (cards.length === 0) {
 		if (failedKinds.length > 0) return { cards, error: firstError, partialError: null };
-		if (unconfigured > 0) return { cards, error: LIBRARY_NOT_CONNECTED, partialError: null };
+		// Only when NO requested kind is connected. A connected library that
+		// simply has no match returns "Nothing found", not a setup error.
+		if (unconfigured === kinds.length) {
+			return { cards, error: LIBRARY_NOT_CONNECTED, partialError: null };
+		}
 		return { cards, error: null, partialError: null }; // connected, nothing found
 	}
 
