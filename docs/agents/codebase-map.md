@@ -1,6 +1,6 @@
 # addarr codebase map
 
-Verified against `c8867d0` (2026-11-12). SvelteKit 5 + TypeScript app (Node 22.18+, adapter-node) that fronts Radarr/Sonarr for one household; production starts at `scripts/serve.mjs`, and the abstraction to learn first is the *arr adapters plus the normalized member-state pipeline in `src/lib/arr/`.
+Verified against `dac73fa` (2026-11-12). SvelteKit 5 + TypeScript app (Node 22.18+, adapter-node) that fronts Radarr/Sonarr for one household; production starts at `scripts/serve.mjs`, and the abstraction to learn first is the *arr adapters plus the normalized member-state pipeline in `src/lib/arr/`.
 
 Maintenance: after adding, moving, or deleting a source file, update the File index and bump `Verified against` to the commit you checked.
 
@@ -71,11 +71,11 @@ Maintenance: after adding, moving, or deleting a source file, update the File in
 
 ## Tests
 
-- Colocated `*.test.ts`: 9 under `src/lib/arr/`, 3 under `src/lib/server/`, 1 under `src/lib/actions/`. 84 tests, all headless, about one second total.
+- Colocated `*.test.ts`: 10 under `src/lib/arr/`, 4 under `src/lib/server/`, 1 under `src/lib/actions/`, plus `src/lib/lockfile.test.ts` (committed release metadata) and `src/routes/route-handlers.test.ts` (real HTTP handlers). 97 tests, all headless, about one second total.
 - All suites: `npm test`. One suite: `node --test src/lib/arr/status.test.ts`. One test: `node --test --test-name-pattern "AUD-06" src/lib/arr/preset-input.test.ts`.
-- Coverage by area: adapter poster-card mapping (`src/lib/arr/poster-cards.test.ts`, network-free fakes), Sonarr add payload, status and queue aggregation, downloads grouping, file normalization, member labels/progress, preset validation, service URL validation, admin gate, passthrough allow-list, auth and sessions, modal inert behavior.
+- Coverage by area: adapter poster-card mapping (`src/lib/arr/poster-cards.test.ts`, network-free fakes), Sonarr add payload, status and queue aggregation, downloads grouping, member search merge (single-service households), file normalization, member labels/progress, preset validation, service URL validation, admin gate, passthrough allow-list, auth and sessions, DB data-directory permissions, lockfile integrity, login/search/status/add route handlers, modal inert behavior.
 - No golden or fixture directories; each test builds inline fixtures, and HTTP is mocked with local servers in `src/lib/arr/client.test.ts`.
-- `npm run check` is the authoritative typecheck (svelte-check, 0 errors/warnings at `c8867d0`).
+- `npm run check` is the authoritative typecheck (svelte-check, 0 errors/warnings at `dac73fa`).
 
 ## Don't read
 
@@ -93,6 +93,7 @@ Maintenance: after adding, moving, or deleting a source file, update the File in
 - Admin gating is split: prefixes in `src/lib/server/admin-gating.ts:13` and redirect/401/403 logic in `src/hooks.server.ts:7`. A new admin page or API without a prefix is publicly reachable.
 - `src/lib/arr/poster-cards.test.ts` has no matching `poster-cards.ts`. The code under test is `toPosterCards()` on each adapter.
 - Tests import source with explicit `.ts` extensions because `node --test` runs TypeScript directly on Node 22.18+; follow that in new tests.
+- Route-handler tests import real SvelteKit route modules in plain `node --test`: `src/routes/route-handlers.test.ts` registers a `node:module` resolve hook for the `$lib/` alias and Vite-style extensionless imports, sets `ADDARR_DB` before the first import, and calls the handlers with fake events. Follow that pattern for route-level regressions.
 - `scripts/serve.mjs` imports `build/handler.js` (adapter-node output), so run `npm run build` before `npm run start:foreground` or `npm run serve`.
 - The README calls `npm test` "arr resource tests", but the suite also covers server auth, gating, and passthrough.
 - The DB path honors `ADDARR_DB` (default `data/addarr.db`); tests point it at a temp directory and must never touch the real file.
