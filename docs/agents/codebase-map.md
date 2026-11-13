@@ -1,6 +1,6 @@
 # addarr codebase map
 
-Verified against `dac73fa` (2026-11-12). SvelteKit 5 + TypeScript app (Node 22.18+, adapter-node) that fronts Radarr/Sonarr for one household; production starts at `scripts/serve.mjs`, and the abstraction to learn first is the *arr adapters plus the normalized member-state pipeline in `src/lib/arr/`.
+Verified against `9b24b7a` (2026-11-12). SvelteKit 5 + TypeScript app (Node 22.18+, adapter-node) that fronts Radarr/Sonarr for one household; production starts at `scripts/serve.mjs`, and the abstraction to learn first is the *arr adapters plus the normalized member-state pipeline in `src/lib/arr/`.
 
 Maintenance: after adding, moving, or deleting a source file, update the File index and bump `Verified against` to the commit you checked.
 
@@ -23,7 +23,7 @@ Maintenance: after adding, moving, or deleting a source file, update the File in
 | Admin UI | `src/routes/console/`, `src/routes/settings/`, `src/routes/presets/`, `src/routes/activity/` | curated console and configuration screens | admin-only screen change |
 | HTTP API | `src/routes/api/`, `src/routes/arrapi/` | internal JSON endpoints, auth-gated read-only passthrough | endpoint or contract change |
 | Arr adapters | `src/lib/arr/client.ts`, `src/lib/arr/radarr.ts`, `src/lib/arr/sonarr.ts` | API v3 calls, resource shapes, poster-card mapping | new arr call or field |
-| Normalization (pure, tested) | `src/lib/arr/status.ts`, `src/lib/arr/downloads.ts`, `src/lib/arr/files.ts`, `src/lib/arr/presentation.ts`, `src/lib/arr/preset-input.ts`, `src/lib/arr/add-resource.ts`, `src/lib/arr/service-url.ts`, `src/lib/arr/types.ts` | member state vocabulary and pure transforms | state, download, preset, file, or add-payload behavior |
+| Normalization (pure, tested) | `src/lib/arr/status.ts`, `src/lib/arr/downloads.ts`, `src/lib/arr/files.ts`, `src/lib/arr/presentation.ts`, `src/lib/arr/preset-input.ts`, `src/lib/arr/search-merge.ts`, `src/lib/arr/add-resource.ts`, `src/lib/arr/service-url.ts`, `src/lib/arr/types.ts` | member state vocabulary and pure transforms | state, download, search-merge, preset, file, or add-payload behavior |
 | Server core | `src/lib/server/auth.ts`, `src/lib/server/db.ts`, `src/lib/server/presets.ts`, `src/lib/server/admin-gating.ts`, `src/lib/server/passthrough.ts`, `src/lib/server/arr-factory.ts` | sessions, SQLite, presets, admin gate, allow-list, client factory | auth, storage, presets, or security change |
 | Shared UI | `src/lib/components/`, `src/lib/actions/modal.ts` | dialogs, detail sheet, preset form, modal focus/inert handling | dialog or accessibility change |
 | Runtime | `scripts/serve.mjs`, `scripts/service.mjs`, `scripts/icons.mjs`, `scripts/mock-arrs.mjs` | production entry, background service, icons, dev mocks | startup, LAN, or service change |
@@ -37,7 +37,7 @@ Maintenance: after adding, moving, or deleting a source file, update the File in
 | Login, logout, first-run setup | `src/routes/api/auth/login/+server.ts`, `src/routes/api/auth/logout/+server.ts`, `src/routes/api/auth/setup/+server.ts`, `src/routes/login/+page.svelte`, `src/routes/setup/+page.svelte` |
 | Sessions, PIN hashing, activity log writes | `src/lib/server/auth.ts:94` |
 | SQLite schema and settings/services rows | `src/lib/server/db.ts:10` |
-| Member search and poster cards | `src/routes/api/search/+server.ts`, `src/lib/arr/radarr.ts:142`, `src/lib/arr/sonarr.ts:128` |
+| Member search and poster cards | `src/routes/api/search/+server.ts`, `src/lib/arr/search-merge.ts:32`, `src/lib/arr/radarr.ts:142`, `src/lib/arr/sonarr.ts:128` |
 | Add flow and Sonarr add payload | `src/routes/api/add/+server.ts`, `src/lib/arr/add-resource.ts:61` |
 | Presets: rows, default, validation, UI | `src/lib/server/presets.ts:27`, `src/lib/arr/preset-input.ts:57`, `src/routes/api/presets/+server.ts`, `src/routes/presets/+page.svelte` |
 | Service connections and URL validation | `src/routes/api/services/+server.ts`, `src/lib/arr/service-url.ts`, `src/routes/settings/+page.svelte` |
@@ -71,11 +71,11 @@ Maintenance: after adding, moving, or deleting a source file, update the File in
 
 ## Tests
 
-- Colocated `*.test.ts`: 10 under `src/lib/arr/`, 4 under `src/lib/server/`, 1 under `src/lib/actions/`, plus `src/lib/lockfile.test.ts` (committed release metadata) and `src/routes/route-handlers.test.ts` (real HTTP handlers). 97 tests, all headless, about one second total.
+- Colocated `*.test.ts`: 10 under `src/lib/arr/`, 4 under `src/lib/server/`, 1 under `src/lib/actions/`, plus `src/lib/lockfile.test.ts` (committed release metadata) and `src/routes/route-handlers.test.ts` (real HTTP handlers). 101 tests, all headless, about one second total.
 - All suites: `npm test`. One suite: `node --test src/lib/arr/status.test.ts`. One test: `node --test --test-name-pattern "AUD-06" src/lib/arr/preset-input.test.ts`.
 - Coverage by area: adapter poster-card mapping (`src/lib/arr/poster-cards.test.ts`, network-free fakes), Sonarr add payload, status and queue aggregation, downloads grouping, member search merge (single-service households), file normalization, member labels/progress, preset validation, service URL validation, admin gate, passthrough allow-list, auth and sessions, DB data-directory permissions, lockfile integrity, login/search/status/add route handlers, modal inert behavior.
 - No golden or fixture directories; each test builds inline fixtures, and HTTP is mocked with local servers in `src/lib/arr/client.test.ts`.
-- `npm run check` is the authoritative typecheck (svelte-check, 0 errors/warnings at `dac73fa`).
+- `npm run check` is the authoritative typecheck (svelte-check, 0 errors/warnings at `9b24b7a`).
 
 ## Don't read
 
@@ -144,6 +144,7 @@ Maintenance: after adding, moving, or deleting a source file, update the File in
 `src/lib/arr/presentation.ts` — member labels, tones, progress bars, formatting.
 `src/lib/arr/preset-input.ts` — preset shape and targeting validation, repair plan.
 `src/lib/arr/service-url.ts` — service base URL validation and normalization.
+`src/lib/arr/search-merge.ts` — merges the per-service member search responses (not-connected libraries are skipped; error/partial-error precedence).
 `src/lib/arr/types.ts` — shared types, `ArrError`, poster URL helper.
 
 ### src/lib/server/
