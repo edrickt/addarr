@@ -6,7 +6,7 @@
 
 One-tap movie and series adds for Radarr and Sonarr, built for the home LAN.
 
-**1.0.1 · Node 22.18+ · Windows / macOS / Linux · MIT**
+**1.0.2 · Node 22.18+ · Windows / macOS / Linux · MIT**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node >= 22.18](https://img.shields.io/badge/node-%3E%3D22.18-brightgreen.svg)](https://nodejs.org)
