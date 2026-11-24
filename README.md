@@ -269,6 +269,27 @@ Addarr is designed for trusted networks. LAN access is opt-in (see [Sharing on y
 
 API keys are held server-side in SQLite and are never sent to the browser. The only *arr passthrough is read-only and allow-listed; write verbs are structurally blocked. Admin sessions last 12 hours with backoff against PIN guessing.
 
+### Accepted host names
+
+Addarr answers only to the names it actually has. Every request's `Host` header is checked against a list built at startup:
+
+- `localhost`, `127.0.0.1`, `[::1]`,
+- the machine's hostname and the mDNS name it advertises (`<hostname>.local`),
+- every address the machine currently holds (LAN IPv4/IPv6, Tailscale),
+- `$HOST` when it pins a specific address.
+
+Anything else gets `403 Host not allowed` (the page shows a plain-text explanation, `/api/**` returns JSON). This is what stops DNS rebinding: a domain that resolves to this machine is still not one of its names, so a page on that domain never becomes same-origin with Addarr. Requests without a `Host` header (curl `--http1.0`, some health probes) are not rejected.
+
+If you put Addarr behind a reverse proxy or give it a DNS name (for example `addarr.home.example`), list it explicitly:
+
+```sh
+ADDARR_ALLOWED_HOSTS=addarr.home.example,media.example.com:8443 npm start
+```
+
+The list is comma-separated; ports are optional and ignored. Restart Addarr after changing an address or hostname — the list is built once per process. If you use a proxy, make sure it forwards the original `Host` (`proxy_set_header Host $host;` in nginx), otherwise every request will look like a foreign name.
+
+Requests a browser labels cross-site (`Sec-Fetch-Site: cross-site`, or a foreign `Origin`/`Referer` when that header is absent) are refused on `/api/**` with `403 Cross-site requests are not allowed`. That stops a random web page from driving the member API with an image tag; it is separate from the host check and does not affect same-origin fetches, navigations or curl.
+
 ## Contributing
 
 Issues and pull requests are welcome. For bugs, include the server log (`npm run logs`), your OS and Node version (`node -v`), and the Radarr/Sonarr versions from Settings. For features, a short description of the member vs admin behavior helps more than a patch alone.

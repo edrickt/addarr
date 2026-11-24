@@ -326,7 +326,9 @@ async function callHook(
 	let resolved = false;
 	const event = {
 		url,
-		request: new Request(url, { headers }),
+		// A real browser always sends Host; default it to the URL's host so each
+		// test only has to override what it is actually testing.
+		request: new Request(url, { headers: { host: url.host, ...headers } }),
 		cookies: { get: () => undefined, set: () => {}, delete: () => {} },
 		locals: {} as Record<string, unknown>,
 		getClientAddress: () => '127.0.0.1'
@@ -464,5 +466,33 @@ test('AD-04: a single-item status poll asks the queue only for that item', async
 		clearServices();
 		fake.server.closeAllConnections();
 		await new Promise<void>((close) => fake.server.close(() => close()));
+	}
+});
+
+test('AS-03: a DNS-rebinding Host is refused for pages and for the API', async () => {
+	// Before: `Host: rebind.attacker.example:4545` answered 200 on /api/search
+	// (and served the page), which made the attacker's origin same-origin with
+	// Addarr — no preflight, JSON POSTs allowed, Origin matching event.url.
+	for (const path of ['/api/search?service=movie&q=dune', '/', '/downloads']) {
+		const res = await callHook(path, { host: 'rebind.attacker.example:4545' });
+		assert.equal(res.status, 403, `${path} must be refused for a foreign Host`);
+		assert.equal(res.resolved, false);
+	}
+	const api = await callHook('/api/search?service=movie&q=dune', { host: 'rebind.attacker.example:4545' });
+	assert.match(String(api.body.error), /Host not allowed/);
+	assert.match(String(api.body.error), /ADDARR_ALLOWED_HOSTS/);
+});
+
+test('AS-03: loopback, the mDNS name and the machine IP still work', async () => {
+	const { hostname, networkInterfaces } = await import('node:os');
+	const lanAddress = Object.values(networkInterfaces())
+		.flat()
+		.find((entry) => entry && !entry.internal && entry.family === 'IPv4')?.address;
+	const hosts = ['localhost', '127.0.0.1', `${hostname()}.local`];
+	if (lanAddress) hosts.push(lanAddress);
+	for (const host of hosts) {
+		const res = await callHook('/api/search?service=movie&q=dune', { host: `${host}:4545` });
+		assert.notEqual(res.status, 403, `${host} must be allowed`);
+		assert.equal(res.resolved, true);
 	}
 });
