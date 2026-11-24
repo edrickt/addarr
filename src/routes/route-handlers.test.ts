@@ -61,6 +61,7 @@ const batch = await import('./api/status/batch/+server.ts');
 const setup = await import('./api/auth/setup/+server.ts');
 const services = await import('./api/services/+server.ts');
 const lan = await import('./api/settings/lan/+server.ts');
+const activity = await import('./api/activity/+server.ts');
 const login = await import('./api/auth/login/+server.ts');
 const { hashPin } = await import('../lib/server/auth.ts');
 const { ensureSetupToken, forgetSetupToken } = await import('../lib/server/setup-token.ts');
@@ -674,4 +675,40 @@ test('AD-05: a JSON null body is a 400 on every route that reads one', async () 
 		assert.equal(invalid.status, 400, `${name} keeps its invalid-JSON 400`);
 		assert.match(String(invalid.body.error), /Invalid JSON body/, name);
 	}
+});
+
+test('AD-10: an out-of-range activity page is an empty page, not a 500', async () => {
+	// Pre-fix: `?page=1e300` made (page-1)*pageSize 5e301, which node:sqlite
+	// rejects ("datatype mismatch") and SvelteKit turned into a 500.
+	db.prepare(`DELETE FROM activity_log`).run();
+	db.prepare(`INSERT INTO activity_log (action, title) VALUES ('test.one', 'first')`).run();
+	db.prepare(`INSERT INTO activity_log (action, title) VALUES ('test.two', 'second')`).run();
+
+	const get = async (value: string) => {
+		const url = new URL(`http://localhost/api/activity?page=${encodeURIComponent(value)}`);
+		return callHandler(activity.GET, { url, request: new Request(url) });
+	};
+
+	// Normal paging is unchanged.
+	const first = await get('1');
+	assert.equal(first.status, 200);
+	assert.equal((first.body.entries as unknown[]).length, 2);
+	assert.equal(first.body.page, 1);
+
+	// Every value that used to overflow the offset answers an empty page instead.
+	for (const value of ['1e300', '1e400', '9007199254740993', '1e9', 'Infinity']) {
+		const res = await get(value);
+		assert.equal(res.status, 200, `page=${value} must not be a 500`);
+		assert.deepEqual(res.body.entries, [], `page=${value} must be an empty page`);
+		assert.ok(Number.isSafeInteger(res.body.page), `page=${value} echoes a bindable page number`);
+		assert.ok((res.body.page as number) >= 1);
+	}
+
+	// Nonsense and non-positive values fall back to the first page, as before.
+	for (const value of ['abc', '0', '-3', '']) {
+		const res = await get(value);
+		assert.equal(res.status, 200, `page=${value} must not be a 500`);
+		assert.equal(res.body.page, 1);
+	}
+	db.prepare(`DELETE FROM activity_log`).run();
 });
