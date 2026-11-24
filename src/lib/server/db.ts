@@ -107,6 +107,60 @@ if (!hasDisabled) {
 	}
 }
 
+/**
+ * Retention for the activity log (AS-06). Every failed login writes a row, and
+ * nothing ever deleted one, so the SQLite file — often on an SD card — grew
+ * without bound while an unauthenticated client could append at request rate.
+ * Keep the newest MAX_ROWS entries and nothing older than RETENTION_DAYS.
+ */
+export const ACTIVITY_MAX_ROWS = 20_000;
+export const ACTIVITY_RETENTION_DAYS = 90;
+/** Six hours: long enough that this can never run per request. */
+export const ACTIVITY_PRUNE_INTERVAL_MS = 6 * 60 * 60_000;
+
+export function pruneActivityLog(
+	options: { maxRows?: number; retentionDays?: number; now?: number } = {}
+): number {
+	const maxRows = options.maxRows ?? ACTIVITY_MAX_ROWS;
+	const retentionDays = options.retentionDays ?? ACTIVITY_RETENTION_DAYS;
+	const now = options.now ?? Date.now();
+	// created_at is SQLite's `datetime('now')` → 'YYYY-MM-DD HH:MM:SS' in UTC.
+	// Comparing it against an ISO string with a 'T' never matches (AUD-09).
+	const cutoff = new Date(now - retentionDays * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
+	let removed = 0;
+	removed += Number(db.prepare(`DELETE FROM activity_log WHERE created_at < ?`).run(cutoff).changes);
+	removed += Number(
+		db
+			.prepare(`DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY id DESC LIMIT ?)`)
+			.run(maxRows).changes
+	);
+	return removed;
+}
+
+/**
+ * Housekeeping on a timer, never on the request path: one prune at startup,
+ * then every six hours. `unref()` so a short-lived process (a test run, a
+ * one-off script) is never held open by it.
+ */
+function scheduleMaintenance(): void {
+	const run = (): void => {
+		try {
+			const removed = pruneActivityLog();
+			if (removed > 0) console.log(`[maintenance] pruned ${removed} activity_log rows`);
+		} catch (err) {
+			console.error('[maintenance] activity prune failed:', err);
+		}
+	};
+	run();
+	const timer = setInterval(run, ACTIVITY_PRUNE_INTERVAL_MS);
+	timer.unref?.();
+}
+
+if (!(globalThis as { __addarrMaintenance?: boolean }).__addarrMaintenance) {
+	(globalThis as { __addarrMaintenance?: boolean }).__addarrMaintenance = true;
+	scheduleMaintenance();
+}
+
 export function getSetting(key: string): string | undefined {
 	const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
 		| { value: string }
