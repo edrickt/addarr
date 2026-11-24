@@ -302,7 +302,9 @@ Doing it from another device on the LAN needs one more thing: the one-time **set
 
 Typeset it into the **Setup token** field (case and dashes do not matter). Without it, a neighbour who reaches the port before you do could claim the admin account; with it, the first person to finish setup is the person who can read your server's log. The token is stored 0600 as `data/setup-token` next to the database so it survives a restart, and is deleted as soon as the first admin account exists. Nothing to configure and nothing to remember afterwards.
 
-If Addarr sits behind a reverse proxy, every request looks like loopback (`127.0.0.1`) unless adapter-node's `ADDRESS_HEADER` is set — in that case remote setup is treated as local. Set `ADDRESS_HEADER=X-Forwarded-For` (and `PROTOCOL_HEADER`, if you terminate TLS) when you want the token gate to see the real client address.
+If Addarr sits behind a reverse proxy, every request looks like loopback (`127.0.0.1`) unless adapter-node's `ADDRESS_HEADER` is set — in that case remote setup is treated as local. Set `ADDRESS_HEADER=X-Forwarded-For` when you want the token gate to see the real client address.
+
+The same proxy needs `PROTOCOL_HEADER=X-Forwarded-Proto` when it terminates TLS: the cross-site check compares the browser's `Origin` with the origin Addarr thinks it is serving, and behind a TLS proxy without that header every same-origin POST would look cross-site (403).
 
 ## Contributing
 
