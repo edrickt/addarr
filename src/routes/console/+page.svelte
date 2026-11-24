@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { modal } from '$lib/actions/modal';
+	import { formatArrTime } from '$lib/arr/presentation';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	type Item = {
@@ -283,8 +284,11 @@
 		return (o as Record<string, unknown> | undefined)?.[key] as Record<string, unknown> | undefined;
 	}
 
+	// arr timestamps are UTC; render them in the admin's local time instead of
+	// chopping the ISO string (AD-08). The console is server-sent, so the zone is
+	// this browser's.
 	function when(item: Record<string, unknown>): string {
-		return String(item.date ?? item.airDateUtc ?? item.when ?? '').replace('T', ' ').slice(0, 16);
+		return formatArrTime(item.date ?? item.airDateUtc ?? item.when);
 	}
 </script>
 

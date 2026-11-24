@@ -14,8 +14,11 @@ export const MEMBER_STATE_LABEL: Record<Exclude<ArrItemState, 'available'>, stri
 	importing: 'Importing…',
 	partial: 'Episodes',
 	attention: 'Waiting',
-	missing: 'Missing',
-	unreleased: 'Unreleased'
+	// GLOSSARY.md is the member-vocabulary contract: "Still looking" and
+	// "Not out yet" are the member words; Missing/Unreleased are admin-side
+	// *arr state names this screen must never show (AD-09).
+	missing: 'Still looking',
+	unreleased: 'Not out yet'
 };
 
 /** Terminal states — only `available` never changes on its own. `missing` and
@@ -103,10 +106,54 @@ export function memberProgressBar(state: ArrItemState, progress?: number | null)
 	}
 }
 
+/**
+ * `YYYY-MM-DD` for a Date's *local* calendar day. The arr calendar's window is
+ * a pair of local days; `toISOString().slice(0, 10)` is the UTC day, which is
+ * already tomorrow for a US evening (AD-08).
+ */
+export function localDateString(date: Date): string {
+	const month = String(date.getMonth() + 1).padStart(2, '0');
+	const day = String(date.getDate()).padStart(2, '0');
+	return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** Local `[start, end]` window for the console calendar, `days` days ahead. */
+export function calendarWindow(days: number, now: Date = new Date()): { start: string; end: string } {
+	const span = Math.max(1, Math.round(days));
+	const end = new Date(now);
+	end.setDate(end.getDate() + span); // calendar days, not 24h blocks (DST-safe)
+	return { start: localDateString(now), end: localDateString(end) };
+}
+
+/**
+ * Render an *arr timestamp in the viewer's local time.
+ *
+ * arr sends UTC for `airDateUtc`/`digitalRelease`/history dates; slicing the ISO
+ * string printed UTC as if it were local (an episode at 21:00 Detroit read
+ * "02:00" on the next day). A bare `YYYY-MM-DD` is a calendar date and must not
+ * be shifted into the previous day, and a timestamp without a zone designator is
+ * UTC by arr convention.
+ */
+export function formatArrTime(value: unknown, locale?: string): string {
+	const raw = String(value ?? '').trim();
+	if (raw === '') return '';
+	const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+	if (dateOnly) {
+		return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(
+			new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+		);
+	}
+	const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw}Z`;
+	const date = new Date(zoned);
+	if (Number.isNaN(date.getTime())) return raw;
+	return new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
 export function formatTimeLeft(seconds: number): string {
 	if (seconds < 60) return 'under a minute';
 	if (seconds < 90 * 60) return `${Math.round(seconds / 60)}m`;
-	return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+	// Floor both parts: rounding the minutes turned 01:59:59 into "1h 60m".
+	return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
 /** Two-letter poster fallback used when a title has no artwork. */

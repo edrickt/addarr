@@ -4,6 +4,7 @@ import { getClient } from '$lib/server/arr-factory';
 import { RadarrClient } from '$lib/arr/radarr';
 import { SonarrClient } from '$lib/arr/sonarr';
 import { ArrError } from '$lib/arr/types';
+import { calendarWindow } from '$lib/arr/presentation';
 import { getServiceByType } from '$lib/server/db';
 import { logActivity } from '$lib/server/auth';
 
@@ -127,10 +128,10 @@ export const GET: RequestHandler = async ({ url, params }) => {
 
 			case 'calendar': {
 				const days = Math.min(Math.max(num(url, 'days') ?? 14, 1), 60);
-				const start = new Date();
-				const end = new Date(Date.now() + days * 86400_000);
-				const fmt = (d: Date) => d.toISOString().slice(0, 10);
-				const items = await client.calendar(fmt(start), fmt(end));
+				// arr wants calendar days; sending the UTC day asked for tomorrow's
+				// window from a US evening, so tonight's releases were missing (AD-08).
+				const { start, end } = calendarWindow(days);
+				const items = await client.calendar(start, end);
 				return json({
 					items: items.map((item) =>
 						service === 'radarr'
