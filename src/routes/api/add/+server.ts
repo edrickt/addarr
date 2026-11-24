@@ -7,6 +7,7 @@ import { ArrError } from '$lib/arr/types';
 import { getServiceByType } from '$lib/server/db';
 import { getDefaultPresetRow, presetToAddDefaults } from '$lib/server/presets';
 import { logActivity } from '$lib/server/auth';
+import { readJsonObject } from '$lib/server/http';
 
 /**
  * POST /api/add — { service: 'movie'|'series', id: tmdbId|tvdbId }.
@@ -15,12 +16,9 @@ import { logActivity } from '$lib/server/auth';
  * search command (duplicate-search footgun). Every add is logged.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
-	let body: { service?: string; id?: number };
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+	const parsed = await readJsonObject<{ service?: string; id?: number }>(request);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const body = parsed.body;
 
 	const kind = body.service;
 	if (kind !== 'movie' && kind !== 'series') {

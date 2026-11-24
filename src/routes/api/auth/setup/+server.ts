@@ -11,15 +11,13 @@ import {
 } from '$lib/server/auth';
 import { db } from '$lib/server/db';
 import { forgetSetupToken, isLoopbackAddress, verifySetupToken } from '$lib/server/setup-token';
+import { readJsonObject } from '$lib/server/http';
 
 /** POST /api/auth/setup — create the first admin account. Only works pre-first-run. */
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
-	let body: { username?: string; pin?: string; token?: string };
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+	const parsed = await readJsonObject<{ username?: string; pin?: string; token?: string }>(request);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const body = parsed.body;
 
 	if (!isValidUsername(body.username)) {
 		return json(

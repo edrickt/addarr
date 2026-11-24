@@ -7,6 +7,7 @@ import { ArrError } from '$lib/arr/types';
 import type { ArrServiceType } from '$lib/arr/types';
 import { ensureDefaultPreset } from '$lib/server/presets';
 import { normalizeServiceBaseUrl } from '$lib/arr/service-url';
+import { readJsonObject } from '$lib/server/http';
 
 /** GET /api/services — configured services (API keys masked). */
 export const GET: RequestHandler = async () => {
@@ -16,12 +17,11 @@ export const GET: RequestHandler = async () => {
 
 /** POST /api/services — save (upsert) a connection. */
 export const POST: RequestHandler = async ({ request }) => {
-	let body: { type?: string; name?: string; baseUrl?: string; apiKey?: string };
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+	const parsed = await readJsonObject<{ type?: string; name?: string; baseUrl?: string; apiKey?: string }>(
+		request
+	);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const body = parsed.body;
 
 	const type = body.type as ArrServiceType;
 	if (type !== 'radarr' && type !== 'sonarr') {

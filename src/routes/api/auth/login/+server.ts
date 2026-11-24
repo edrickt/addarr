@@ -11,6 +11,7 @@ import {
 	verifyPin
 } from '$lib/server/auth';
 import { createThrottle } from '$lib/server/login-throttle';
+import { readJsonObject } from '$lib/server/http';
 
 /** POST /api/auth/login — { username, pin } → session cookie. */
 
@@ -29,12 +30,9 @@ function backoffKeys(username: string, ip: string): string[] {
 }
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
-	let body: { username?: string; pin?: string };
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+	const parsed = await readJsonObject<{ username?: string; pin?: string }>(request);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const body = parsed.body;
 
 	const keys = backoffKeys(String(body.username ?? ''), getClientAddress());
 	if (throttle.isBlocked(keys)) {

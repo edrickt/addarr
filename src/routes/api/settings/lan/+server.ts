@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSetting, setSetting } from '$lib/server/db';
 import { logActivity } from '$lib/server/auth';
+import { readJsonObject } from '$lib/server/http';
 
 type LanControl = {
 	boundLan: boolean;
@@ -42,12 +43,9 @@ export const GET: RequestHandler = async () => {
 
 /** POST /api/settings/lan { enabled: boolean } — persist and apply live. */
 export const POST: RequestHandler = async ({ request, locals }) => {
-	let body: { enabled?: unknown };
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+	const parsed = await readJsonObject<{ enabled?: unknown }>(request);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const body = parsed.body;
 	if (typeof body.enabled !== 'boolean') {
 		return json({ error: 'enabled must be a boolean' }, { status: 400 });
 	}

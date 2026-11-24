@@ -59,6 +59,8 @@ const search = await import('./api/search/+server.ts');
 const status = await import('./api/status/[kind]/[id]/+server.ts');
 const batch = await import('./api/status/batch/+server.ts');
 const setup = await import('./api/auth/setup/+server.ts');
+const services = await import('./api/services/+server.ts');
+const lan = await import('./api/settings/lan/+server.ts');
 const login = await import('./api/auth/login/+server.ts');
 const { hashPin } = await import('../lib/server/auth.ts');
 const { ensureSetupToken, forgetSetupToken } = await import('../lib/server/setup-token.ts');
@@ -632,5 +634,44 @@ test('AS-05: setup from this machine stays frictionless', async () => {
 	} finally {
 		db.prepare(`DELETE FROM users`).run();
 		forgetSetupToken();
+	}
+});
+
+/** AD-05: `JSON.parse('null')` succeeds, so a null body slipped past every
+ * `try { await request.json() } catch` and became a 500 (a thrown TypeError). */
+test('AD-05: a JSON null body is a 400 on every route that reads one', async () => {
+	const post = (module: { POST: unknown }, event: Record<string, unknown>) =>
+		callHandler(module.POST as never, event);
+	const bodyOf = (value: string): Record<string, unknown> => {
+		const url = new URL('http://localhost/api/x');
+		return {
+			url,
+			request: new Request(url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: value
+			}),
+			locals: { user: { id: 1, username: 'admin', role: 'admin' } },
+			cookies: { get: () => undefined, set: () => {}, delete: () => {} },
+			getClientAddress: () => '127.0.0.1'
+		};
+	};
+
+	const cases: { name: string; module: { POST: unknown } }[] = [
+		{ name: 'add', module: add },
+		{ name: 'services', module: services },
+		{ name: 'settings/lan', module: lan },
+		{ name: 'auth/login', module: login },
+		{ name: 'auth/setup', module: setup }
+	];
+	for (const { name, module } of cases) {
+		for (const literal of ['null', '[]', '5', '"x"']) {
+			const res = await post(module, bodyOf(literal));
+			assert.equal(res.status, 400, `${name} must reject a ${literal} body with 400, got ${res.status}`);
+			assert.match(String(res.body.error), /object|invalid json/i, name);
+		}
+		const invalid = await post(module, bodyOf('{'));
+		assert.equal(invalid.status, 400, `${name} keeps its invalid-JSON 400`);
+		assert.match(String(invalid.body.error), /Invalid JSON body/, name);
 	}
 });
