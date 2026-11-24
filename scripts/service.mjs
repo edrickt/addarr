@@ -33,6 +33,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureIcons } from './icons.mjs';
+import { PS_GET_SERVER_PID, parsePidFile } from './pid-file.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DATA_DIR = join(ROOT, 'data');
@@ -210,9 +211,9 @@ function ensureDataDir() {
 function persistConfigSafe() { try { persistConfig(); } catch { /* ignore */ } }
 
 function readPid() {
+	// `<pid> <startedAtMs>` — read the first field only (AD-02).
 	try {
-		const pid = Number(readFileSync(PID_PATH, 'utf8').trim());
-		return Number.isInteger(pid) && pid > 0 ? pid : null;
+		return parsePidFile(readFileSync(PID_PATH, 'utf8'));
 	} catch {
 		return null;
 	}
@@ -559,13 +560,7 @@ if (Test-Path $TrayPidFile) {
 }
 Set-Content -Path $TrayPidFile -Value $PID
 
-function Get-ServerPid {
-  if (-not (Test-Path $PidFile)) { return 0 }
-  $raw = Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1
-  $serverPid = 0
-  if ([int]::TryParse($raw, [ref]$serverPid) -and (Get-Process -Id $serverPid -ErrorAction SilentlyContinue)) { return $serverPid }
-  return 0
-}
+${PS_GET_SERVER_PID}
 
 function Start-AddarrServer {
   if ((Get-ServerPid) -gt 0) { return }

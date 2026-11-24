@@ -17,6 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handler } from '../build/handler.js';
+import { formatPidFile } from './pid-file.mjs';
 
 // Set by scripts/service.mjs when a supervisor owns this process:
 // "launchd" (macOS), "systemd" (Linux), unset when standalone.
@@ -248,7 +249,7 @@ function writePidFile() {
 		} catch {
 			/* no existing PID */
 		}
-		writeFileSync(pidPath, `${process.pid} ${Date.now()}\n`);
+		writeFileSync(pidPath, formatPidFile(process.pid));
 		process.on('exit', () => {
 			try {
 				const cur = readFileSync(pidPath, 'utf8').trim().split(/\s+/)[0];
