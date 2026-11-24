@@ -58,6 +58,9 @@ const { load: loginLoad } = await import('./login/+page.server.ts');
 const search = await import('./api/search/+server.ts');
 const status = await import('./api/status/[kind]/[id]/+server.ts');
 const batch = await import('./api/status/batch/+server.ts');
+const setup = await import('./api/auth/setup/+server.ts');
+const login = await import('./api/auth/login/+server.ts');
+const { hashPin } = await import('../lib/server/auth.ts');
 const add = await import('./api/add/+server.ts');
 
 after(() => {
@@ -495,4 +498,85 @@ test('AS-03: loopback, the mDNS name and the machine IP still work', async () =>
 		assert.notEqual(res.status, 403, `${host} must be allowed`);
 		assert.equal(res.resolved, true);
 	}
+});
+
+/** Time a call, best of `runs`, so a timing assertion is not a one-off fluke. */
+async function minDuration<T>(runs: number, call: () => Promise<T>): Promise<{ result: T; ms: number }> {
+	let best = Number.POSITIVE_INFINITY;
+	let result: T | undefined;
+	for (let i = 0; i < runs; i++) {
+		const started = performance.now();
+		result = await call();
+		best = Math.min(best, performance.now() - started);
+	}
+	return { result: result as T, ms: best };
+}
+
+function setupEvent(body: unknown): Record<string, unknown> {
+	const url = new URL('http://localhost/api/auth/setup');
+	return {
+		request: new Request(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		}),
+		cookies: { get: () => undefined, set: () => {}, delete: () => {} }
+	};
+}
+
+function loginEvent(body: unknown, ip: string): Record<string, unknown> {
+	const url = new URL('http://localhost/api/auth/login');
+	return {
+		request: new Request(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		}),
+		cookies: { get: () => undefined, set: () => {}, delete: () => {} },
+		getClientAddress: () => ip
+	};
+}
+
+test('AS-04: post-setup setup attempts are refused without hashing a PIN', async () => {
+	// A hash of the same PIN costs 17–28 ms on the audit host; the refusal must
+	// not pay it. Measured against one real hash on this host, not a fixed
+	// millisecond budget, so the assertion survives slow machines.
+	db.prepare(`INSERT INTO users (id, username, pin_hash, role) VALUES (91, 'existing-admin', 'x', 'admin')`).run();
+	try {
+		const { result, ms: hashMs } = await minDuration(3, async () => hashPin('1234'));
+		assert.ok(result.length > 0);
+		const { result: response, ms: setupMs } = await minDuration(3, async () => {
+			return (await setup.POST as unknown as (event: unknown) => Promise<Response>)(setupEvent({ username: 'zzz', pin: '4271' }));
+		});
+
+		assert.equal(response.status, 403);
+		assert.ok(
+			setupMs < hashMs / 2,
+			`setup must short-circuit before argon2 (setup ${setupMs.toFixed(1)}ms vs one hash ${hashMs.toFixed(1)}ms)`
+		);
+		assert.equal(
+			(db.prepare(`SELECT COUNT(*) AS n FROM users`).get() as { n: number }).n,
+			1,
+			'a second admin must not be created'
+		);
+	} finally {
+		db.prepare(`DELETE FROM users WHERE id = 91`).run();
+	}
+});
+
+test('AS-04: username churn hits the same throttle as wrong-PIN guessing', async () => {
+	// Before: the key was `username@ip`, so distinct valid-format names never
+	// tripped the backoff and each request bought a full argon2id verify against
+	// DUMMY_HASH. Now the per-IP key shares the budget.
+	const ip = '203.0.113.7';
+	for (let i = 0; i < 10; i++) {
+		const res = await callHandler(login.POST, loginEvent({ username: `nobody${i}`, pin: '1234' }, ip));
+		assert.equal(res.status, 401, `attempt ${i + 1} is still answered`);
+	}
+	const blocked = await callHandler(login.POST, loginEvent({ username: 'nobody999', pin: '1234' }, ip));
+	assert.equal(blocked.status, 429);
+	assert.match(String(blocked.body.error), /too many failed attempts/i);
+
+	const other = await callHandler(login.POST, loginEvent({ username: 'nobody999', pin: '1234' }, '203.0.113.8'));
+	assert.equal(other.status, 401, 'another client is not punished for this one');
 });

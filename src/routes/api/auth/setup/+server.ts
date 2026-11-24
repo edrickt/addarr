@@ -1,6 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createSession, getUserByUsername, hashPin, isValidPin, isValidUsername, logActivity } from '$lib/server/auth';
+import {
+	createSession,
+	getUserByUsername,
+	hasAnyUser,
+	hashPin,
+	isValidPin,
+	isValidUsername,
+	logActivity
+} from '$lib/server/auth';
 import { db } from '$lib/server/db';
 
 /** POST /api/auth/setup — create the first admin account. Only works pre-first-run. */
@@ -20,6 +28,15 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 	if (!isValidPin(body.pin)) {
 		return json({ error: 'PIN must be 4–6 digits' }, { status: 400 });
+	}
+
+	// Cheap pre-check before the expensive part: `hashPin` used to run as an
+	// argument to INSERT ... WHERE NOT EXISTS, so every post-setup request burned
+	// a 19 MiB argon2id hash (17–28 ms of the single event loop) and threw it
+	// away. Unauthenticated, unthrottled, ~20× the cost of a rejected login
+	// (AS-04).
+	if (hasAnyUser()) {
+		return json({ error: 'Setup already completed — log in instead' }, { status: 403 });
 	}
 
 	// Atomic: only insert when no users exist; concurrent setups race, one wins (F-AUTH-02).

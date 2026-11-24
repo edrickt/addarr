@@ -10,44 +10,22 @@ import {
 	pruneExpiredSessions,
 	verifyPin
 } from '$lib/server/auth';
+import { createThrottle } from '$lib/server/login-throttle';
 
 /** POST /api/auth/login — { username, pin } → session cookie. */
 
 // In-memory failed-attempt backoff: a 4-digit PIN is otherwise brute-forceable
 // even against argon2. LAN threat model — this table resets on restart, which
 // is acceptable; the point is making automated guessing slow, not impossible.
-const WINDOW_MS = 10 * 60_000;
-const MAX_ATTEMPTS = 10;
-const attempts = new Map<string, { count: number; first: number }>();
+//
+// Every failure is counted twice: per `username@ip` (so one account cannot be
+// ground down) and per `ip` (so a fresh username per request cannot buy
+// unlimited argon2 verifications — AS-04). The table is bounded by size, not
+// only by age (AD-06).
+const throttle = createThrottle();
 
-function backoffKey(username: string, ip: string): string {
-	return `${username}@${ip}`;
-}
-
-function isBlocked(key: string): boolean {
-	const entry = attempts.get(key);
-	if (!entry) return false;
-	if (Date.now() - entry.first > WINDOW_MS) {
-		attempts.delete(key);
-		return false;
-	}
-	return entry.count >= MAX_ATTEMPTS;
-}
-
-function recordFailure(key: string): void {
-	const now = Date.now();
-	const entry = attempts.get(key);
-	if (!entry || now - entry.first > WINDOW_MS) {
-		attempts.set(key, { count: 1, first: now });
-	} else {
-		entry.count++;
-	}
-	// Opportunistic prune so the map can't grow unbounded.
-	if (attempts.size > 500) {
-		for (const [k, v] of attempts) {
-			if (now - v.first > WINDOW_MS) attempts.delete(k);
-		}
-	}
+function backoffKeys(username: string, ip: string): string[] {
+	return [`user:${username}@${ip}`, `ip:${ip}`];
 }
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
@@ -58,8 +36,8 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 
-	const key = backoffKey(String(body.username ?? ''), getClientAddress());
-	if (isBlocked(key)) {
+	const keys = backoffKeys(String(body.username ?? ''), getClientAddress());
+	if (throttle.isBlocked(keys)) {
 		return json(
 			{ error: 'Too many failed attempts — wait 10 minutes and try again.' },
 			{ status: 429 }
@@ -67,7 +45,7 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 	}
 
 	if (!isValidUsername(body.username) || !isValidPin(body.pin)) {
-		recordFailure(key);
+		throttle.recordFailure(keys);
 		return json({ error: 'Wrong username or PIN' }, { status: 401 });
 	}
 
@@ -76,17 +54,17 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		// Same verify cost as a real account: one argon2id verification against a
 		// fixed hash (AUD-08 / F-AUTH-03).
 		try { verifyPin(body.pin, DUMMY_HASH); } catch { /* ignore */ }
-		recordFailure(key);
+		throttle.recordFailure(keys);
 		try { logActivity({ userId: null, serviceId: null, action: 'auth.login.failure', title: String(body.username ?? '') }); } catch { /* best-effort */ }
 		return json({ error: 'Wrong username or PIN' }, { status: 401 });
 	}
 	if (!verifyPin(body.pin, user.pin_hash)) {
-		recordFailure(key);
+		throttle.recordFailure(keys);
 		try { logActivity({ userId: user.id, serviceId: null, action: 'auth.login.failure', title: user.username }); } catch { /* best-effort */ }
 		return json({ error: 'Wrong username or PIN' }, { status: 401 });
 	}
 
-	attempts.delete(key);
+	throttle.clear(keys);
 	pruneExpiredSessions();
 	createSession(cookies, user.id, user.role);
 	try { logActivity({ userId: user.id, serviceId: null, action: 'auth.login.success', title: user.username }); } catch { /* best-effort */ }
