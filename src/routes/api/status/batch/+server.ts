@@ -10,6 +10,12 @@ import { ArrError } from '$lib/arr/types';
  * GET /api/status/batch?movies=1,2&series=3,4 — one aggregated poll per
  * refresh. Fetches each arr queue once and returns states for all requested
  * ids, fixing N-sequential-full-queue polling (F-MEMBER-07).
+ *
+ * Membership comes from the library list the poll already reads: an id that is
+ * not in it is answered "waiting" locally. It used to run its own
+ * `GET /movie/{id}` per id, which turned one anonymous request into 102 upstream
+ * calls (AS-01). The only ids the member UI polls are ids it got from the arr,
+ * so a real item is always in the library list.
  */
 export const GET: RequestHandler = async ({ url }) => {
 	const parseIds = (v: string | null): number[] =>
@@ -35,16 +41,8 @@ export const GET: RequestHandler = async ({ url }) => {
 				if (rows.length > 0) (out.movies as Record<number, unknown>)[id] = aggregateQueue(rows);
 				else {
 					const movie = byId.get(id);
-					if (!movie) {
-						try {
-							const m = await client.movie(id);
-							(out.movies as Record<number, unknown>)[id] = movieStatus(m, []);
-						} catch (err) {
-							if (err instanceof ArrError && err.status === 404)
-								(out.movies as Record<number, unknown>)[id] = { state: 'waiting' };
-							else throw err;
-						}
-					} else (out.movies as Record<number, unknown>)[id] = movieStatus(movie, []);
+					if (!movie) (out.movies as Record<number, unknown>)[id] = { state: 'waiting' };
+					else (out.movies as Record<number, unknown>)[id] = movieStatus(movie, []);
 				}
 			}
 		}
@@ -57,16 +55,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			for (const id of seriesIds) {
 				const rows = queue.filter((q) => q.seriesId === id);
 				const series = byId.get(id);
-				if (!series) {
-					try {
-						const s = await client.series(id);
-						(out.series as Record<number, unknown>)[id] = seriesStatus(s, rows);
-					} catch (err) {
-						if (err instanceof ArrError && err.status === 404)
-							(out.series as Record<number, unknown>)[id] = { state: 'waiting' };
-						else throw err;
-					}
-				} else (out.series as Record<number, unknown>)[id] = seriesStatus(series, rows);
+				if (!series) (out.series as Record<number, unknown>)[id] = { state: 'waiting' };
+				else (out.series as Record<number, unknown>)[id] = seriesStatus(series, rows);
 			}
 		}
 

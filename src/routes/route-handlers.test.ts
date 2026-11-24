@@ -57,6 +57,7 @@ const { db } = await import('../lib/server/db.ts');
 const { load: loginLoad } = await import('./login/+page.server.ts');
 const search = await import('./api/search/+server.ts');
 const status = await import('./api/status/[kind]/[id]/+server.ts');
+const batch = await import('./api/status/batch/+server.ts');
 const add = await import('./api/add/+server.ts');
 
 after(() => {
@@ -213,4 +214,94 @@ test('AUD-05-R: an arr 429 is transient busy, not an admin preset problem', asyn
 	assert.equal(res.status, 429);
 	assert.match(String(res.body.error), /busy|try again/i);
 	assert.doesNotMatch(String(res.body.error), /admin|not responding/i);
+});
+
+/**
+ * A fake arr that answers every endpoint the member poll touches and records
+ * each request, so a test can count what one browser request costs upstream.
+ */
+function countingArr(options: {
+	movies?: Record<string, unknown>[];
+	series?: Record<string, unknown>[];
+	queueStatus?: number;
+}): Promise<{ server: Server; baseUrl: string; calls: string[] }> {
+	const calls: string[] = [];
+	const server = createServer((req, res) => {
+		calls.push(req.url ?? '');
+		const send = (status: number, body: unknown) => {
+			res.writeHead(status, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify(body));
+		};
+		if (req.url?.startsWith('/api/v3/queue')) {
+			if (options.queueStatus && options.queueStatus !== 200) {
+				return send(options.queueStatus, { message: 'queue exploded' });
+			}
+			return send(200, { page: 1, pageSize: 200, totalRecords: 0, records: [] });
+		}
+		if (req.method === 'GET' && req.url === '/api/v3/movie') return send(200, options.movies ?? []);
+		if (req.method === 'GET' && req.url === '/api/v3/series') return send(200, options.series ?? []);
+		if (req.method === 'GET' && /^\/api\/v3\/movie\/\d+$/.test(req.url ?? '')) {
+			return send(404, { message: 'NotFound' });
+		}
+		if (req.method === 'GET' && /^\/api\/v3\/series\/\d+$/.test(req.url ?? '')) {
+			return send(404, { message: 'NotFound' });
+		}
+		return send(404, {});
+	});
+	return new Promise((resolveServer) => {
+		server.listen(0, '127.0.0.1', () => {
+			const address = server.address();
+			const port = typeof address === 'object' && address ? address.port : 0;
+			resolveServer({ server, baseUrl: `http://127.0.0.1:${port}`, calls });
+		});
+	});
+}
+
+function seedService(type: 'radarr' | 'sonarr', baseUrl: string): void {
+	db.prepare(
+		`INSERT INTO services (type, name, base_url, api_key, app_version) VALUES (?, ?, ?, 'k', '5.0.0')`
+	).run(type, type === 'radarr' ? 'Radarr' : 'Sonarr', baseUrl);
+}
+
+function clearServices(): void {
+	db.prepare(`DELETE FROM presets`).run();
+	db.prepare(`DELETE FROM services`).run();
+}
+
+function batchEvent(qs: string): Record<string, unknown> {
+	const url = new URL(`http://localhost/api/status/batch?${qs}`);
+	return { url, request: new Request(url) };
+}
+
+async function withCountingArr(
+	options: Parameters<typeof countingArr>[0],
+	types: ('radarr' | 'sonarr')[],
+	body: (arr: { calls: string[] }) => Promise<void>
+): Promise<void> {
+	// A single fake serves both services (different rows point at the same URL).
+	const fake = await countingArr(options);
+	for (const type of types) seedService(type, fake.baseUrl);
+	try {
+		await body(fake);
+	} finally {
+		clearServices();
+		await new Promise<void>((resolveClose) => fake.server.close(() => resolveClose()));
+	}
+}
+
+test('AS-01: 100 unknown movie ids cost the arr nothing, not 100 lookups', async () => {
+	// Before: every id missing from the library map ran its own sequential
+	// `GET /movie/{id}`, so one anonymous 1 KB poll became 102 upstream requests
+	// (and five concurrent polls 510). Unknown ids only ever appear on the attack
+	// path or after an admin deleted the item, so they answer "waiting" locally.
+	await withCountingArr({ movies: [] }, ['radarr'], async (arr) => {
+		const ids = Array.from({ length: 100 }, (_, i) => 1000 + i);
+		const res = await callHandler(batch.GET, batchEvent(`movies=${ids.join(',')}`));
+
+		assert.equal(res.status, 200);
+		const perItem = arr.calls.filter((url) => /^\/api\/v3\/movie\/\d+/.test(url));
+		assert.deepEqual(perItem, [], 'no per-id upstream lookups are allowed');
+		assert.ok(arr.calls.length <= 2, `one poll must cost at most 2 upstream calls, made ${arr.calls.length}`);
+		assert.deepEqual(res.body.movies, Object.fromEntries(ids.map((id) => [id, { state: 'waiting' }])));
+	});
 });
