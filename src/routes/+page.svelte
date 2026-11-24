@@ -192,38 +192,35 @@
 					const bRes = await fetch(`/api/status/batch?${qs.toString()}`);
 					if (bRes.ok) batch = await bRes.json();
 				} catch {
-					/* fallback to per-card below */
+					/* keep last known state */
 				}
 				for (const card of watching) {
-					try {
-						const bData = card.kind === 'movie' ? batch?.movies?.[String(card.watchId)] : batch?.series?.[String(card.watchId)];
-						let data = bData as { state: string; progress?: number | null; timeLeftSeconds?: number | null; size?: number | null; sizeLeft?: number | null; episodes?: { have: number; total: number } | null } | undefined;
-						if (!data) {
-							const res = await fetch(`/api/status/${card.kind}/${card.watchId}`);
-							if (!res.ok) continue;
-							data = (await res.json()) as NonNullable<typeof data>;
-						}
-						if (!data) continue;
-						const state = data.state as NonNullable<typeof card.watchStatus>;
-						if (state !== card.watchStatus) {
-							announce =
-								state === 'available'
-									? `${card.title} is in the library now`
-									: `${card.title}: still on its way`;
-						}
-						card.watchStatus = state;
-						card.watchProgress = data.progress ?? null;
-						card.watchTimeLeft = data.timeLeftSeconds ?? null;
-						card.watchSize = data.size ?? null;
-						card.watchSizeLeft = data.sizeLeft ?? null;
-						card.watchEpisodes = data.episodes ?? null;
-						if (state === 'available') {
-							card.inLibrary = true;
-							// The emotional peak — give it a longer window on screen.
-							showToast(`“${card.title}” is available`, false, null, 8000);
-						}
-					} catch {
-						/* transient — keep last state */
+					// One arr being unreachable must not become one full-queue request
+					// per card: the batch reports it in `errors` and the card keeps its
+					// last known state until the next tick (AD-04).
+					const data = (card.kind === 'movie'
+						? batch?.movies?.[String(card.watchId)]
+						: batch?.series?.[String(card.watchId)]) as
+						| { state: string; progress?: number | null; timeLeftSeconds?: number | null; size?: number | null; sizeLeft?: number | null; episodes?: { have: number; total: number } | null }
+						| undefined;
+					if (!data) continue;
+					const state = data.state as NonNullable<typeof card.watchStatus>;
+					if (state !== card.watchStatus) {
+						announce =
+							state === 'available'
+								? `${card.title} is in the library now`
+								: `${card.title}: still on its way`;
+					}
+					card.watchStatus = state;
+					card.watchProgress = data.progress ?? null;
+					card.watchTimeLeft = data.timeLeftSeconds ?? null;
+					card.watchSize = data.size ?? null;
+					card.watchSizeLeft = data.sizeLeft ?? null;
+					card.watchEpisodes = data.episodes ?? null;
+					if (state === 'available') {
+						card.inLibrary = true;
+						// The emotional peak — give it a longer window on screen.
+						showToast(`“${card.title}” is available`, false, null, 8000);
 					}
 				}
 			}

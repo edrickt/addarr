@@ -23,10 +23,12 @@ export const GET: RequestHandler = async ({ params }) => {
 
 	try {
 		const client = getClient(kind === 'movie' ? 'radarr' : 'sonarr');
-		const queue = await client.queue();
 
+		// Ask the queue for this item only: the full paginated queue (6 requests on
+		// a 1,200-row queue) was what made the page's per-card fallback a load
+		// spike aimed at an arr that was already unwell (AD-04).
 		if (client instanceof RadarrClient) {
-			const rows = queue.filter((q) => q.movieId === id);
+			const rows = (await client.queue({ movieIds: [id] })).filter((q) => q.movieId === id);
 			if (rows.length > 0) return json(aggregateQueue(rows));
 			try {
 				const movie = await client.movie(id);
@@ -38,7 +40,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		}
 
 		if (client instanceof SonarrClient) {
-			const rows = queue.filter((q) => q.seriesId === id);
+			const rows = (await client.queue({ seriesIds: [id] })).filter((q) => q.seriesId === id);
 			try {
 				const series = await client.series(id);
 				return json(seriesStatus(series, rows));

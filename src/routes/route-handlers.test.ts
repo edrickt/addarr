@@ -223,6 +223,7 @@ test('AUD-05-R: an arr 429 is transient busy, not an admin preset problem', asyn
 function countingArr(options: {
 	movies?: Record<string, unknown>[];
 	series?: Record<string, unknown>[];
+	queue?: Record<string, unknown>[];
 	queueStatus?: number;
 }): Promise<{ server: Server; baseUrl: string; calls: string[] }> {
 	const calls: string[] = [];
@@ -232,19 +233,26 @@ function countingArr(options: {
 			res.writeHead(status, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify(body));
 		};
+		const byId = (rows: Record<string, unknown>[]) => {
+			const id = (req.url ?? '').split('/').pop();
+			return rows.find((row) => String(row.id) === id);
+		};
 		if (req.url?.startsWith('/api/v3/queue')) {
 			if (options.queueStatus && options.queueStatus !== 200) {
 				return send(options.queueStatus, { message: 'queue exploded' });
 			}
-			return send(200, { page: 1, pageSize: 200, totalRecords: 0, records: [] });
+			const records = options.queue ?? [];
+			return send(200, { page: 1, pageSize: 200, totalRecords: records.length, records });
 		}
 		if (req.method === 'GET' && req.url === '/api/v3/movie') return send(200, options.movies ?? []);
 		if (req.method === 'GET' && req.url === '/api/v3/series') return send(200, options.series ?? []);
 		if (req.method === 'GET' && /^\/api\/v3\/movie\/\d+$/.test(req.url ?? '')) {
-			return send(404, { message: 'NotFound' });
+			const movie = byId(options.movies ?? []);
+			return movie ? send(200, movie) : send(404, { message: 'NotFound' });
 		}
 		if (req.method === 'GET' && /^\/api\/v3\/series\/\d+$/.test(req.url ?? '')) {
-			return send(404, { message: 'NotFound' });
+			const series = byId(options.series ?? []);
+			return series ? send(200, series) : send(404, { message: 'NotFound' });
 		}
 		return send(404, {});
 	});
@@ -285,6 +293,7 @@ async function withCountingArr(
 		await body(fake);
 	} finally {
 		clearServices();
+		fake.server.closeAllConnections();
 		await new Promise<void>((resolveClose) => fake.server.close(() => resolveClose()));
 	}
 }
@@ -398,6 +407,62 @@ test('AD-03: the add dedupe reads the lookup resource, not the whole library', a
 		);
 	} finally {
 		clearRadarr();
+		server.closeAllConnections();
 		await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+	}
+});
+
+function statusEvent(kind: string, id: string): Record<string, unknown> {
+	const url = new URL(`http://localhost/api/status/${kind}/${id}`);
+	return { params: { kind, id }, url, request: new Request(url) };
+}
+
+test('AD-04: one service failing does not discard the other service states', async () => {
+	// Before: /api/status/batch was all-or-nothing, so a Radarr queue hiccup
+	// answered 502 and the page replaced every per-service poll with one
+	// full-queue request per card (32 upstream calls per tick at the audit).
+	const radarrFake = await countingArr({
+		movies: [{ id: 1, tmdbId: 1, title: 'Dune', monitored: true, isAvailable: true, hasFile: true }]
+	});
+	const sonarrFake = await countingArr({ series: [{ id: 5, tvdbId: 5, title: 'Show' }], queueStatus: 500 });
+	seedService('radarr', radarrFake.baseUrl);
+	seedService('sonarr', sonarrFake.baseUrl);
+	try {
+		const res = await callHandler(batch.GET, batchEvent('movies=1&series=5'));
+
+		assert.equal(res.status, 200, 'a single service outage is not a failed poll');
+		assert.deepEqual(res.body.movies, { 1: { state: 'available' } });
+		assert.deepEqual(res.body.series, {});
+		assert.deepEqual(res.body.errors, ['sonarr']);
+	} finally {
+		clearServices();
+		for (const fake of [radarrFake, sonarrFake]) {
+			fake.server.closeAllConnections();
+			await new Promise<void>((close) => fake.server.close(() => close()));
+		}
+	}
+});
+
+test('AD-04: a single-item status poll asks the queue only for that item', async () => {
+	// Before: /api/status/movie/5 read every queue page (6 requests on a
+	// 1,200-row queue) while the page fanned out one such call per card.
+	const fake = await countingArr({
+		movies: [{ id: 5, tmdbId: 5, title: 'Heat', monitored: true, isAvailable: true, hasFile: false }],
+		queue: [{ id: 900, movieId: 5, status: 'downloading', size: 1000, sizeleft: 250 }]
+	});
+	seedService('radarr', fake.baseUrl);
+	try {
+		const res = await callHandler(status.GET, statusEvent('movie', '5'));
+
+		assert.equal(res.status, 200);
+		assert.equal(res.body.state, 'downloading');
+		assert.equal(res.body.progress, 75);
+		const queueCalls = fake.calls.filter((url) => url.startsWith('/api/v3/queue'));
+		assert.equal(queueCalls.length, 1, 'one queue request, not one per page');
+		assert.match(decodeURIComponent(queueCalls[0]!), /movieIds=5/, 'filtered to the polled item');
+	} finally {
+		clearServices();
+		fake.server.closeAllConnections();
+		await new Promise<void>((close) => fake.server.close(() => close()));
 	}
 });
