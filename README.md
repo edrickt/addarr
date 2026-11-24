@@ -197,6 +197,13 @@ Data (users, sessions, connections, presets, activity log) lives in one SQLite f
 
 Values passed to `npm start` are baked into the installed background service. Re-run `npm start` (with or without them) to change what is baked in.
 
+### Upgrading from an earlier build
+
+Two upgrade notes, both one-time:
+
+- **Sessions are now stored hashed.** `sessions.id` holds `sha256(token)` instead of the token, so a copy of `data/addarr.db` is no longer a set of live credentials. Rows written by an earlier build cannot be converted (the plain text is not recoverable) and are deleted on first start — **everyone signs in again once**, and the log says how many sessions were dropped.
+- **Sessions have an absolute lifetime.** On top of the 12-hour admin / 30-day member sliding expiry, every session ends 30 days after it was created, however often it is used.
+
 ## API
 
 Internal API. The browser talks to these routes. Radarr/Sonarr keys never leave the server.

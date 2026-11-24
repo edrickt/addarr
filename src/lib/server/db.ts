@@ -44,9 +44,14 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
+	-- id is sha256(session token), never the token itself (AS-07).
 	id TEXT PRIMARY KEY,
 	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	expires_at TEXT NOT NULL
+	expires_at TEXT NOT NULL,
+	-- Creation time, for the absolute lifetime cap (AS-07). Nullable because the
+	-- column is added by an ALTER TABLE on existing databases; a row without it
+	-- is rejected by getSessionUser.
+	created_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS services (
@@ -105,6 +110,41 @@ if (!hasDisabled) {
 	} catch (err) {
 		throw new Error(`Schema migration failed adding users.disabled: ${err instanceof Error ? err.message : err}`);
 	}
+}
+
+/**
+ * AS-07 migration: sessions are keyed by sha256(token) and carry a creation time.
+ *
+ * Rows written before this change hold the raw bearer token as their primary
+ * key. The plain text cannot be recovered to hash it, so they are invalidated
+ * once — every signed-in user signs in again after upgrading, and from then on a
+ * copy of the database is no longer a set of live credentials. Hashed rows are
+ * exactly 64 hex characters, so the predicate is idempotent: a second start
+ * deletes nothing.
+ */
+const sessionColumns = db.prepare(`SELECT name FROM pragma_table_info('sessions')`).all() as {
+	name: string;
+}[];
+if (!sessionColumns.some((column) => column.name === 'created_at')) {
+	try {
+		db.exec(`ALTER TABLE sessions ADD COLUMN created_at TEXT`);
+	} catch (err) {
+		throw new Error(
+			`Schema migration failed adding sessions.created_at: ${err instanceof Error ? err.message : err}`
+		);
+	}
+}
+try {
+	const dropped = Number(db.prepare(`DELETE FROM sessions WHERE length(id) <> 64`).run().changes);
+	if (dropped > 0) {
+		console.log(
+			`[schema] invalidated ${dropped} session(s) created before sessions were stored hashed (AS-07) — sign in again`
+		);
+	}
+} catch (err) {
+	throw new Error(
+		`Schema migration failed invalidating raw-token sessions: ${err instanceof Error ? err.message : err}`
+	);
 }
 
 /**

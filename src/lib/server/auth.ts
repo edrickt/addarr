@@ -1,4 +1,4 @@
-import { argon2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { argon2Sync, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { db } from './db.ts';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -10,8 +10,10 @@ import type { Cookies } from '@sveltejs/kit';
 
 export const SESSION_COOKIE = 'addarr_session';
 
-const MEMBER_TTL_S = 30 * 24 * 3600; // 30 days
-const ADMIN_TTL_S = 12 * 3600; // 12 hours
+const MEMBER_TTL_S = 30 * 24 * 3600; // 30 days (sliding)
+const ADMIN_TTL_S = 12 * 3600; // 12 hours (sliding)
+/** Absolute lifetime for every session, regardless of how often it is used. */
+const ABSOLUTE_TTL_S = 30 * 24 * 3600; // 30 days
 
 // argon2id parameters (OWASP-recommended minimum): 19 MiB, 2 passes, 1 lane.
 const ARGON2 = { tagLength: 32, parallelism: 1, passes: 2, memory: 19456 } as const;
@@ -55,6 +57,15 @@ export function verifyPin(pin: string, stored: string): boolean {
 	return tag.length === candidate.length && timingSafeEqual(tag, candidate);
 }
 
+/**
+ * Sessions are keyed by sha256 of the cookie value, so a copy of the database
+ * (backup, copied data dir, support bundle) holds no usable bearer tokens
+ * (AS-07). The cookie the browser keeps is still the token itself.
+ */
+export function hashSessionId(sid: string): string {
+	return createHash('sha256').update(sid).digest('hex');
+}
+
 export function hasAnyUser(): boolean {
 	const row = db.prepare(`SELECT EXISTS(SELECT 1 FROM users) AS any`).get() as
 		| { any: number }
@@ -88,34 +99,54 @@ export function createUser(input: {
 }
 
 /**
- * Resolve a session cookie to a user. Rolling: once less than half the
- * role's lifetime remains, the expiry (and cookie) is refreshed.
+ * Resolve a session cookie to a user.
+ *
+ * Two lifetimes apply. The sliding one refreshes the expiry once less than half
+ * the role's lifetime remains. The absolute one is fixed at creation: a session
+ * used at least once every 12 hours still ends 30 days after it was created, so
+ * a stolen cookie is not valid forever (AS-07). A session without a creation
+ * time cannot be bounded and is refused.
  */
 export function getSessionUser(sid: string, cookies: Cookies): SessionUser | null {
 	// Opportunistic hygiene: expired rows never accumulate (F-AUTH-04).
 	if (Math.random() < 0.05) pruneExpiredSessions();
+	const id = hashSessionId(sid);
 	const row = db
 		.prepare(
-			`SELECT s.expires_at, u.id, u.username, u.role
+			`SELECT s.expires_at, s.created_at, u.id, u.username, u.role
 			 FROM sessions s JOIN users u ON u.id = s.user_id
 			 WHERE s.id = ? AND u.disabled = 0`
 		)
-		.get(sid) as { expires_at: string; id: number; username: string; role: 'admin' | 'member' } | undefined;
+		.get(id) as
+		| {
+				expires_at: string;
+				created_at: string | null;
+				id: number;
+				username: string;
+				role: 'admin' | 'member';
+		  }
+		| undefined;
 
 	if (!row) return null;
 
 	const now = Date.now();
 	const expires = Date.parse(row.expires_at);
-	if (!Number.isFinite(expires) || expires < now) {
-		db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sid);
+	const created = row.created_at === null ? Number.NaN : Date.parse(row.created_at);
+	const absoluteEnd = created + ABSOLUTE_TTL_S * 1000;
+	if (!Number.isFinite(expires) || expires < now || !Number.isFinite(absoluteEnd) || now > absoluteEnd) {
+		db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
 		return null;
 	}
 
 	const ttl = row.role === 'admin' ? ADMIN_TTL_S : MEMBER_TTL_S;
 	if (expires - now < (ttl / 2) * 1000) {
-		const newExpires = new Date(now + ttl * 1000).toISOString();
-		db.prepare(`UPDATE sessions SET expires_at = ? WHERE id = ?`).run(newExpires, sid);
-		setSessionCookie(cookies, sid, newExpires);
+		// Never slide past the absolute cap.
+		const newExpiresMs = Math.min(now + ttl * 1000, absoluteEnd);
+		if (newExpiresMs > expires) {
+			const newExpires = new Date(newExpiresMs).toISOString();
+			db.prepare(`UPDATE sessions SET expires_at = ? WHERE id = ?`).run(newExpires, id);
+			setSessionCookie(cookies, sid, newExpires);
+		}
 	}
 
 	return { id: row.id, username: row.username, role: row.role };
@@ -128,11 +159,13 @@ export function createSession(
 ): string {
 	const sid = randomBytes(32).toString('base64url');
 	const ttl = role === 'admin' ? ADMIN_TTL_S : MEMBER_TTL_S;
-	const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
-	db.prepare(`INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`).run(
-		sid,
+	const now = Date.now();
+	const expiresAt = new Date(now + ttl * 1000).toISOString();
+	db.prepare(`INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`).run(
+		hashSessionId(sid),
 		userId,
-		expiresAt
+		expiresAt,
+		new Date(now).toISOString()
 	);
 	setSessionCookie(cookies, sid, expiresAt);
 	return sid;
@@ -142,11 +175,17 @@ export function pruneExpiredSessions(): void {
 	// expires_at is stored as an ISO-8601 string (`toISOString()`); comparing it
 	// against SQLite's space-separated `datetime('now')` never matches on the
 	// same day because 'T' sorts above ' ' (AUD-09).
-	try { db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(new Date().toISOString()); } catch { /* best-effort */ }
+	try {
+		db.prepare(
+			`DELETE FROM sessions WHERE expires_at < ? OR (created_at IS NOT NULL AND created_at < ?)`
+		).run(new Date().toISOString(), new Date(Date.now() - ABSOLUTE_TTL_S * 1000).toISOString());
+	} catch {
+		/* best-effort */
+	}
 }
 
 export function destroySession(sid: string, cookies: Cookies): void {
-	db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sid);
+	db.prepare(`DELETE FROM sessions WHERE id = ?`).run(hashSessionId(sid));
 	cookies.delete(SESSION_COOKIE, { path: '/' });
 }
 
