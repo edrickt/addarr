@@ -10,10 +10,11 @@ import {
 	logActivity
 } from '$lib/server/auth';
 import { db } from '$lib/server/db';
+import { forgetSetupToken, isLoopbackAddress, verifySetupToken } from '$lib/server/setup-token';
 
 /** POST /api/auth/setup — create the first admin account. Only works pre-first-run. */
-export const POST: RequestHandler = async ({ request, cookies }) => {
-	let body: { username?: string; pin?: string };
+export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
+	let body: { username?: string; pin?: string; token?: string };
 	try {
 		body = await request.json();
 	} catch {
@@ -39,6 +40,26 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		return json({ error: 'Setup already completed — log in instead' }, { status: 403 });
 	}
 
+	// Loopback setup is frictionless (the owner is at the keyboard). From another
+	// address the one-time token printed in the console log is required, so a
+	// neighbour — or a rebinding page — cannot claim the admin account first
+	// (AS-05). Fail closed if the address cannot be determined.
+	let fromThisMachine = false;
+	try {
+		fromThisMachine = isLoopbackAddress(getClientAddress());
+	} catch (err) {
+		console.error('[setup] could not determine the client address:', err);
+	}
+	if (!fromThisMachine && !verifySetupToken(body.token)) {
+		return json(
+			{
+				error:
+					'Setup from another device needs the one-time setup token printed in the Addarr console log (npm run logs).'
+			},
+			{ status: 403 }
+		);
+	}
+
 	// Atomic: only insert when no users exist; concurrent setups race, one wins (F-AUTH-02).
 	try {
 		const r = db
@@ -54,6 +75,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		throw err;
 	}
 
+	forgetSetupToken();
 	const user = getUserByUsername(body.username!);
 	if (!user) return json({ error: 'Setup failed — try again' }, { status: 500 });
 	createSession(cookies, user.id, 'admin');

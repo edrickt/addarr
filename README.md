@@ -290,6 +290,20 @@ The list is comma-separated; ports are optional and ignored. Restart Addarr afte
 
 Requests a browser labels cross-site (`Sec-Fetch-Site: cross-site`, or a foreign `Origin`/`Referer` when that header is absent) are refused on `/api/**` with `403 Cross-site requests are not allowed`. That stops a random web page from driving the member API with an image tag; it is separate from the host check and does not affect same-origin fetches, navigations or curl.
 
+### First-run setup
+
+Creating the first admin account on the machine running Addarr (loopback) needs nothing but a username and a PIN.
+
+Doing it from another device on the LAN needs one more thing: the one-time **setup token** printed in the console log at startup — `npm run logs`, or the terminal in `start:foreground` mode:
+
+```
+[setup] First-run setup token (needed only from another device): K7QM-3XPD-9RTW
+```
+
+Typeset it into the **Setup token** field (case and dashes do not matter). Without it, a neighbour who reaches the port before you do could claim the admin account; with it, the first person to finish setup is the person who can read your server's log. The token is stored 0600 as `data/setup-token` next to the database so it survives a restart, and is deleted as soon as the first admin account exists. Nothing to configure and nothing to remember afterwards.
+
+If Addarr sits behind a reverse proxy, every request looks like loopback (`127.0.0.1`) unless adapter-node's `ADDRESS_HEADER` is set — in that case remote setup is treated as local. Set `ADDRESS_HEADER=X-Forwarded-For` (and `PROTOCOL_HEADER`, if you terminate TLS) when you want the token gate to see the real client address.
+
 ## Contributing
 
 Issues and pull requests are welcome. For bugs, include the server log (`npm run logs`), your OS and Node version (`node -v`), and the Radarr/Sonarr versions from Settings. For features, a short description of the member vs admin behavior helps more than a patch alone.

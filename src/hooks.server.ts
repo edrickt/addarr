@@ -3,6 +3,7 @@ import os from 'node:os';
 import { getSessionUser, hasAnyUser, SESSION_COOKIE } from '$lib/server/auth';
 import { decodePathname, isAdminPath } from '$lib/server/admin-gating';
 import { buildHostAllowlist, crossSiteVerdict, hostVerdict } from '$lib/server/request-guard';
+import { announceSetupToken } from '$lib/server/setup-token';
 
 /**
  * Names this instance answers to: loopback, its own interface addresses, the
@@ -35,6 +36,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 			headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
 		});
 	}
+
+	// First run: make sure the one-time setup token exists and is in the log, so
+	// the owner can finish setup from another device before a neighbour does
+	// (AS-05). No-op (a boolean read) once an admin exists.
+	announceSetupToken();
 
 	const sid = event.cookies.get(SESSION_COOKIE);
 	event.locals.user = sid ? getSessionUser(sid, event.cookies) : null;

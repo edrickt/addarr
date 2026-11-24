@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const DB_PATH = process.env.ADDARR_DB ?? join(process.cwd(), 'data', 'addarr.db');
+export const DB_PATH = process.env.ADDARR_DB ?? join(process.cwd(), 'data', 'addarr.db');
 
 /**
  * Create/secure the database's directory. Only a directory Addarr creates is

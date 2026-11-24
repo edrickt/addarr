@@ -2,6 +2,9 @@
 	let username = $state('');
 	let pin = $state('');
 	let confirm = $state('');
+	// Only needed when Setup is opened from another device; loopback setup does
+	// not ask for it (the token is printed in the server's console log).
+	let token = $state('');
 	let msg = $state<{ kind: 'ok' | 'error'; text: string } | null>(null);
 	let busy = $state(false);
 
@@ -17,7 +20,7 @@
 			const res = await fetch('/api/auth/setup', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ username, pin })
+				body: JSON.stringify({ username, pin, token: token.trim() || undefined })
 			});
 			const data = await res.json();
 			if (res.ok) {
@@ -50,6 +53,9 @@
 		<input id="setup-pin" type="password" bind:value={pin} inputmode="numeric" maxlength={6} autocomplete="off" />
 		<label for="setup-confirm">Repeat PIN</label>
 		<input id="setup-confirm" type="password" bind:value={confirm} inputmode="numeric" maxlength={6} autocomplete="off" />
+		<label for="setup-token">Setup token <small>(only when you opened this page from another device)</small></label>
+		<input id="setup-token" bind:value={token} autocomplete="off" placeholder="XXXX-XXXX-XXXX" />
+		<p class="hint">Printed in the Addarr console log on the machine running it — <span class="mono">npm run logs</span>. Leave blank on the server itself.</p>
 		<button type="submit" disabled={busy || !username || !pin || !confirm}>
 			{busy ? 'Creating…' : 'Create admin account'}
 		</button>

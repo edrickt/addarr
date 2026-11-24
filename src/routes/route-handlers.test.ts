@@ -61,6 +61,7 @@ const batch = await import('./api/status/batch/+server.ts');
 const setup = await import('./api/auth/setup/+server.ts');
 const login = await import('./api/auth/login/+server.ts');
 const { hashPin } = await import('../lib/server/auth.ts');
+const { ensureSetupToken, forgetSetupToken } = await import('../lib/server/setup-token.ts');
 const add = await import('./api/add/+server.ts');
 
 after(() => {
@@ -512,7 +513,7 @@ async function minDuration<T>(runs: number, call: () => Promise<T>): Promise<{ r
 	return { result: result as T, ms: best };
 }
 
-function setupEvent(body: unknown): Record<string, unknown> {
+function setupEvent(body: unknown, ip = '127.0.0.1'): Record<string, unknown> {
 	const url = new URL('http://localhost/api/auth/setup');
 	return {
 		request: new Request(url, {
@@ -520,7 +521,8 @@ function setupEvent(body: unknown): Record<string, unknown> {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body)
 		}),
-		cookies: { get: () => undefined, set: () => {}, delete: () => {} }
+		cookies: { get: () => undefined, set: () => {}, delete: () => {} },
+		getClientAddress: () => ip
 	};
 }
 
@@ -579,4 +581,56 @@ test('AS-04: username churn hits the same throttle as wrong-PIN guessing', async
 
 	const other = await callHandler(login.POST, loginEvent({ username: 'nobody999', pin: '1234' }, '203.0.113.8'));
 	assert.equal(other.status, 401, 'another client is not punished for this one');
+});
+
+test('AS-05: a first run cannot be claimed from the network without the token', async () => {
+	// Before: POST /api/auth/setup from any LAN client (or a rebinding page) on a
+	// fresh install returned 200 + an admin session. The owner then found setup
+	// "already completed" and had to delete data/addarr.db.
+	db.prepare(`DELETE FROM users`).run();
+	forgetSetupToken();
+	const token = ensureSetupToken();
+	assert.ok(token, 'first run mints a token');
+	const post = setup.POST as unknown as (event: unknown) => Promise<Response>;
+	try {
+		const noToken = await post(setupEvent({ username: 'neighbour', pin: '9999' }, '192.168.1.50'));
+		assert.equal(noToken.status, 403);
+		assert.match(String((await noToken.json()).error), /setup token/i);
+		assert.equal(
+			(db.prepare(`SELECT COUNT(*) AS n FROM users`).get() as { n: number }).n,
+			0,
+			'no admin account was created'
+		);
+
+		const wrongToken = await post(
+			setupEvent({ username: 'neighbour', pin: '9999', token: 'ZZZZ-ZZZZ-ZZZZ' }, '192.168.1.50')
+		);
+		assert.equal(wrongToken.status, 403, 'a wrong token is not a retry loop');
+
+		const withToken = await post(setupEvent({ username: 'owner', pin: '1234', token }, '192.168.1.50'));
+		assert.equal(withToken.status, 200);
+		assert.equal((await withToken.json()).role, 'admin');
+	} finally {
+		db.prepare(`DELETE FROM users`).run();
+		forgetSetupToken();
+	}
+});
+
+test('AS-05: setup from this machine stays frictionless', async () => {
+	db.prepare(`DELETE FROM users`).run();
+	forgetSetupToken();
+	ensureSetupToken();
+	const post = setup.POST as unknown as (event: unknown) => Promise<Response>;
+	try {
+		const res = await post(setupEvent({ username: 'owner', pin: '1234' }, '127.0.0.1'));
+		assert.equal(res.status, 200, 'no token is asked for on the server itself');
+		assert.equal((await res.json()).role, 'admin');
+
+		// And the same request from the LAN afterwards is refused as completed.
+		const again = await post(setupEvent({ username: 'intruder', pin: '1234' }, '192.168.1.50'));
+		assert.equal(again.status, 403);
+	} finally {
+		db.prepare(`DELETE FROM users`).run();
+		forgetSetupToken();
+	}
 });
