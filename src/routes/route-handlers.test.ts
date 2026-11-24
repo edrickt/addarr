@@ -305,3 +305,61 @@ test('AS-01: 100 unknown movie ids cost the arr nothing, not 100 lookups', async
 		assert.deepEqual(res.body.movies, Object.fromEntries(ids.map((id) => [id, { state: 'waiting' }])));
 	});
 });
+
+const { handle } = await import('../hooks.server.ts');
+
+/** Run the real SvelteKit hook for one request; `resolved` tells if the route ran. */
+async function callHook(
+	path: string,
+	headers: Record<string, string> = {}
+): Promise<{ status: number; body: JsonBody; resolved: boolean }> {
+	const url = new URL(`http://localhost${path}`);
+	let resolved = false;
+	const event = {
+		url,
+		request: new Request(url, { headers }),
+		cookies: { get: () => undefined, set: () => {}, delete: () => {} },
+		locals: {} as Record<string, unknown>,
+		getClientAddress: () => '127.0.0.1'
+	};
+	const response = await (handle as unknown as (input: unknown) => Promise<Response>)({
+		event,
+		resolve: async () => {
+			resolved = true;
+			return new Response(JSON.stringify({ ok: true }), { status: 200 });
+		}
+	});
+	const body = (await response.json().catch(() => ({}))) as JsonBody;
+	return { status: response.status, body, resolved };
+}
+
+test('AS-02: a cross-site request never reaches the member API', async () => {
+	// Before: GET /api/search with Origin: http://evil.example (or an <img> tag,
+	// which sends Sec-Fetch-Site: cross-site) ran the full arr lookup and
+	// answered 200. Any web page could put the house's arrs to work.
+	const hostile: Record<string, string>[] = [
+		{ 'sec-fetch-site': 'cross-site' },
+		{ origin: 'http://evil.example' },
+		{ referer: 'http://evil.example/page.html' }
+	];
+	for (const headers of hostile) {
+		const res = await callHook('/api/search?service=movie&q=dune', headers);
+		assert.equal(res.status, 403, `${JSON.stringify(headers)} must be refused`);
+		assert.equal(res.resolved, false, 'the route handler must not run');
+		assert.match(String(res.body.error), /cross-site/i);
+	}
+});
+
+test('AS-02: the app and its own pages still reach the member API', async () => {
+	const friendly: Record<string, string>[] = [
+		{ 'sec-fetch-site': 'same-origin' },
+		{ 'sec-fetch-site': 'none' },
+		{ origin: 'http://localhost' },
+		{}
+	];
+	for (const headers of friendly) {
+		const res = await callHook('/api/search?service=movie&q=dune', headers);
+		assert.notEqual(res.status, 403, `${JSON.stringify(headers)} must not be refused`);
+		assert.equal(res.resolved, true);
+	}
+});

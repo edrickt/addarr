@@ -1,6 +1,7 @@
 import { json, redirect, type Handle } from '@sveltejs/kit';
 import { getSessionUser, hasAnyUser, SESSION_COOKIE } from '$lib/server/auth';
 import { decodePathname, isAdminPath } from '$lib/server/admin-gating';
+import { crossSiteVerdict } from '$lib/server/request-guard';
 
 // Auth model: members use the app anonymously; only admin surfaces need a
 // session (admin created at first-run setup, 12-hour rolling sessions).
@@ -15,6 +16,19 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const path = decodePathname(event.url.pathname);
 	const isApi = path.startsWith('/api/') || path.startsWith('/arrapi/');
 	const needsAdmin = isAdminPath(event.url.pathname);
+
+	if (path.startsWith('/api/')) {
+		// The member API is anonymous and expensive: refuse requests that another
+		// site's page drove, which an <img> tag or a no-cors fetch is enough to do
+		// (AS-02). SvelteKit's own CSRF check only covers form content types.
+		const site = crossSiteVerdict({
+			secFetchSite: event.request.headers.get('sec-fetch-site'),
+			origin: event.request.headers.get('origin'),
+			referer: event.request.headers.get('referer'),
+			expectedOrigin: event.url.origin
+		});
+		if (!site.ok) return json({ error: site.error }, { status: 403 });
+	}
 
 	if (needsAdmin) {
 		if (!hasAnyUser()) {
