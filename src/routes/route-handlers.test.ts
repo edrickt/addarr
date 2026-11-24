@@ -363,3 +363,41 @@ test('AS-02: the app and its own pages still reach the member API', async () => 
 		assert.equal(res.resolved, true);
 	}
 });
+
+test('AD-03: the add dedupe reads the lookup resource, not the whole library', async () => {
+	// The lookup resource Radarr returns for a title that is already added
+	// carries its library id, so `GET /movie` (the whole library) is redundant.
+	const calls: string[] = [];
+	const url = new URL('http://localhost/api/add');
+	const server = createServer((req, res) => {
+		calls.push(req.url ?? '');
+		const send = (status: number, body: unknown) => {
+			res.writeHead(status, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify(body));
+		};
+		if (req.url?.startsWith('/api/v3/movie/lookup/tmdb')) {
+			return send(200, { id: 77, tmdbId: 123, title: 'Already Here', year: 2020, hasFile: true });
+		}
+		return send(404, {});
+	});
+	const baseUrl = await new Promise<string>((resolveServer) => {
+		server.listen(0, '127.0.0.1', () => {
+			const address = server.address();
+			resolveServer(`http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`);
+		});
+	});
+	seedRadarr(baseUrl);
+	try {
+		const res = await addRequest();
+		assert.equal(res.status, 409);
+		assert.equal(res.body.inLibrary, true);
+		assert.deepEqual(
+			calls.filter((c) => c === '/api/v3/movie'),
+			[],
+			'the whole library must not be fetched to answer a dedupe check'
+		);
+	} finally {
+		clearRadarr();
+		await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+	}
+});

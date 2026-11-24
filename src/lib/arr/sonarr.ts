@@ -53,9 +53,11 @@ export class SonarrClient extends ArrClient {
 		return this.raw('GET', `/episode?${params.toString()}`);
 	}
 
-	async queue(options: { includeSeries?: boolean } = {}): Promise<Record<string, unknown>[]> {
+	async queue(options: { includeSeries?: boolean; seriesIds?: number[] } = {}): Promise<Record<string, unknown>[]> {
 		const params = new URLSearchParams({ pageSize: '200' });
 		if (options.includeSeries) params.set('includeSeries', 'true');
+		// Filter server-side when the caller knows which items it cares about.
+		if (options.seriesIds?.length) params.set('seriesIds', options.seriesIds.join(','));
 		const all: Record<string, unknown>[] = [];
 		for (let page = 1; page <= 100; page++) {
 			params.set('page', String(page));
@@ -126,32 +128,42 @@ export class SonarrClient extends ArrClient {
 	}
 
 	async toPosterCards(lookupResults: SonarrSeries[]): Promise<PosterCard[]> {
-		const [library, queue] = await Promise.all([this.allSeries(), this.queue()]);
-		const byTvdb = new Map(library.map((s) => [s.tvdbId, s]));
-		return lookupResults
-			.filter((s) => s.tvdbId)
-			.map((s) => {
-				const known = byTvdb.get(s.tvdbId);
-				const rows = known ? queue.filter((q) => q.seriesId === known.id) : [];
-				const status = known ? seriesStatus(known, rows) : undefined;
-				return {
-					sourceId: s.tvdbId,
-					title: s.title,
-					year: s.year ?? null,
-					overview: s.overview ?? '',
-					posterUrl: posterUrl(s.images),
-					inLibrary: !!known,
-					id: known?.id,
-					// An unmonitored title with no queue activity is not being
-					// pursued: keep truthful states (available, queue progress) but
-					// never claim it is missing/partial (AUD-05).
-					status:
-						known?.monitored === false && rows.length === 0 && status && isPursuitState(status.state)
-							? undefined
-							: status,
-					seriesType: s.seriesType
-				};
-			});
+		const hits = lookupResults.filter((s) => s.tvdbId);
+		// Sonarr's lookup returns the library resource (id > 0) for a series that
+		// is already added; GET /series (the whole library) is only needed when
+		// the payload does not say (AD-03).
+		const idsFromLookup = hits.every((s) => typeof s.id === 'number');
+		const library = idsFromLookup ? null : await this.allSeries();
+		const byTvdb = new Map((library ?? []).map((s) => [s.tvdbId, s]));
+		const known = hits.map((s) =>
+			idsFromLookup ? ((s.id ?? 0) > 0 ? s : undefined) : byTvdb.get(s.tvdbId)
+		);
+		const wanted = known
+			.map((k) => k?.id)
+			.filter((id): id is number => typeof id === 'number' && id > 0);
+		const queue = wanted.length > 0 ? await this.queue({ seriesIds: wanted }) : [];
+		return hits.map((s, i) => {
+			const series = known[i];
+			const rows = series?.id == null ? [] : queue.filter((q) => q.seriesId === series.id);
+			const status = series ? seriesStatus(series, rows) : undefined;
+			return {
+				sourceId: s.tvdbId,
+				title: s.title,
+				year: s.year ?? null,
+				overview: s.overview ?? '',
+				posterUrl: posterUrl(s.images),
+				inLibrary: !!series,
+				id: series?.id,
+				// An unmonitored title with no queue activity is not being
+				// pursued: keep truthful states (available, queue progress) but
+				// never claim it is missing/partial (AUD-05).
+				status:
+					series?.monitored === false && rows.length === 0 && status && isPursuitState(status.state)
+						? undefined
+						: status,
+				seriesType: s.seriesType
+			};
+		});
 	}
 
 	status(): Promise<ArrSystemStatus> {

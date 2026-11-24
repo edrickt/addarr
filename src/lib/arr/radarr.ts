@@ -56,9 +56,12 @@ export class RadarrClient extends ArrClient {
 		return this.raw('DELETE', `/movie/${id}?deleteFiles=${opts.deleteFiles}&addImportExclusion=${opts.addExclusion}`);
 	}
 
-	async queue(options: { includeMovie?: boolean } = {}): Promise<Record<string, unknown>[]> {
+	async queue(options: { includeMovie?: boolean; movieIds?: number[] } = {}): Promise<Record<string, unknown>[]> {
 		const params = new URLSearchParams({ pageSize: '200' });
 		if (options.includeMovie) params.set('includeMovie', 'true');
+		// Filter server-side when the caller knows which items it cares about
+		// (status polling, search): the whole queue is not needed for 10 cards.
+		if (options.movieIds?.length) params.set('movieIds', options.movieIds.join(','));
 		const all: Record<string, unknown>[] = [];
 		for (let page = 1; page <= 100; page++) {
 			params.set('page', String(page));
@@ -140,31 +143,43 @@ export class RadarrClient extends ArrClient {
 	}
 
 	async toPosterCards(lookupResults: RadarrMovie[]): Promise<PosterCard[]> {
-		const [library, queue] = await Promise.all([this.allMovies(), this.queue()]);
-		const byTmdb = new Map(library.map((m) => [m.tmdbId, m]));
-		return lookupResults
-			.filter((m) => m.tmdbId)
-			.map((m) => {
-				const known = byTmdb.get(m.tmdbId);
-				const rows = known ? queue.filter((q) => q.movieId === known.id) : [];
-				const status = known ? movieStatus(known, rows) : undefined;
-				return {
-					sourceId: m.tmdbId,
-					title: m.title,
-					year: m.year ?? null,
-					overview: m.overview ?? '',
-					posterUrl: posterUrl(m.images),
-					inLibrary: !!known,
-					id: known?.id,
-					// An unmonitored title with no queue activity is not being
-					// pursued: keep truthful states (available, queue progress) but
-					// never claim it is missing/unreleased (AUD-05).
-					status:
-						known?.monitored === false && rows.length === 0 && status && isPursuitState(status.state)
-							? undefined
-							: status
-				};
-			});
+		const hits = lookupResults.filter((m) => m.tmdbId);
+		// Radarr's lookup returns the library resource (id > 0) for a title that
+		// is already added, which is all this needs to answer "in library?".
+		// Reading GET /movie (the whole library, several MB) per search was the
+		// amplification in AD-03/AS-02.
+		const idsFromLookup = hits.every((m) => typeof m.id === 'number');
+		const library = idsFromLookup ? null : await this.allMovies();
+		const byTmdb = new Map((library ?? []).map((m) => [m.tmdbId, m]));
+		const known = hits.map((m) =>
+			idsFromLookup ? ((m.id ?? 0) > 0 ? m : undefined) : byTmdb.get(m.tmdbId)
+		);
+		const wanted = known
+			.map((k) => k?.id)
+			.filter((id): id is number => typeof id === 'number' && id > 0);
+		// Only the ids on screen: one small request instead of every queue page.
+		const queue = wanted.length > 0 ? await this.queue({ movieIds: wanted }) : [];
+		return hits.map((m, i) => {
+			const movie = known[i];
+			const rows = movie?.id == null ? [] : queue.filter((q) => q.movieId === movie.id);
+			const status = movie ? movieStatus(movie, rows) : undefined;
+			return {
+				sourceId: m.tmdbId,
+				title: m.title,
+				year: m.year ?? null,
+				overview: m.overview ?? '',
+				posterUrl: posterUrl(m.images),
+				inLibrary: !!movie,
+				id: movie?.id,
+				// An unmonitored title with no queue activity is not being
+				// pursued: keep truthful states (available, queue progress) but
+				// never claim it is missing/unreleased (AUD-05).
+				status:
+					movie?.monitored === false && rows.length === 0 && status && isPursuitState(status.state)
+						? undefined
+						: status
+			};
+		});
 	}
 
 	status(): Promise<ArrSystemStatus> {

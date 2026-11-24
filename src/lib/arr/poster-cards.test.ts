@@ -151,3 +151,96 @@ test('AUD-05: monitored library items keep their normalized state', async () => 
 	assert.equal(cards[0]?.status?.state, 'available');
 	assert.equal(cards[1]?.status?.state, 'missing');
 });
+
+/**
+ * AD-03: a search used to read the whole library (GET /movie — several MB on a
+ * real instance) plus every queue page, for at most 10 lookup hits. Radarr and
+ * Sonarr lookup results already carry the library resource for a title that is
+ * already added (id + hasFile/isAvailable/monitored/statistics), so the library
+ * read is unnecessary and the queue only needs the hit ids.
+ */
+function spyRadarr(library: RadarrMovie[] = []): { client: RadarrClient; calls: string[] } {
+	const client = new RadarrClient('http://arr.test', 'key');
+	const calls: string[] = [];
+	client.raw = (async (method: string, path: string) => {
+		calls.push(`${method} ${path}`);
+		if (path === '/movie') return library;
+		if (path.startsWith('/queue')) return { page: 1, pageSize: 200, totalRecords: 0, records: [] };
+		throw new Error(`unexpected upstream request: ${path}`);
+	}) as typeof client.raw;
+	return { client, calls };
+}
+
+function spySonarr(): { client: SonarrClient; calls: string[] } {
+	const client = new SonarrClient('http://arr.test', 'key');
+	const calls: string[] = [];
+	client.raw = (async (method: string, path: string) => {
+		calls.push(`${method} ${path}`);
+		if (path === '/series') return [];
+		if (path.startsWith('/queue')) return { page: 1, pageSize: 200, totalRecords: 0, records: [] };
+		throw new Error(`unexpected upstream request: ${path}`);
+	}) as typeof client.raw;
+	return { client, calls };
+}
+
+test('AD-03: a lookup hit that is already in the library needs no library read', async () => {
+	const { client, calls } = spyRadarr();
+	const cards = await client.toPosterCards([
+		{ id: 7, title: 'Dune', tmdbId: 438631, monitored: true, isAvailable: true, hasFile: false }
+	]);
+
+	assert.equal(cards.length, 1);
+	assert.equal(cards[0]?.inLibrary, true);
+	assert.equal(cards[0]?.id, 7);
+	assert.equal(cards[0]?.status?.state, 'missing');
+	assert.deepEqual(
+		calls.filter((c) => c === 'GET /movie'),
+		[],
+		'the whole library must not be fetched'
+	);
+});
+
+test('AD-03: only the hit ids are asked for in the queue', async () => {
+	const { client, calls } = spyRadarr();
+	await client.toPosterCards([
+		{ id: 7, title: 'Dune', tmdbId: 438631, monitored: true, isAvailable: true, hasFile: false },
+		{ id: 9, title: 'Heat', tmdbId: 2, monitored: true, isAvailable: true, hasFile: false },
+		{ id: 0, title: 'Not added', tmdbId: 3 }
+	]);
+
+	const queueCalls = calls.filter((c) => c.startsWith('GET /queue'));
+	assert.equal(queueCalls.length, 1, 'one queue request per search, not one per page');
+	assert.match(decodeURIComponent(queueCalls[0]!), /movieIds=7,9/, 'the queue is filtered to the ids on screen');
+});
+
+test('AD-03: a series lookup hit uses its library resource too', async () => {
+	const { client, calls } = spySonarr();
+	const cards = await client.toPosterCards([
+		{
+			id: 4,
+			title: 'Severance',
+			tvdbId: 371980,
+			monitored: true,
+			statistics: { episodeFileCount: 0, episodeCount: 10, totalEpisodeCount: 20 }
+		}
+	]);
+
+	assert.equal(cards[0]?.inLibrary, true);
+	assert.equal(cards[0]?.status?.state, 'missing');
+	assert.deepEqual(
+		calls.filter((c) => c === 'GET /series'),
+		[]
+	);
+	assert.match(calls.find((c) => c.startsWith('GET /queue')) ?? '', /seriesIds=4/);
+});
+
+test('AD-03: an arr that does not report library ids falls back to the library list', async () => {
+	// Older/odd lookup payloads have no `id` at all. Rather than guess, fall
+	// back to the previous behaviour: read the library once and match by id.
+	const { client, calls } = spyRadarr([monitoredMovie]);
+	const cards = await client.toPosterCards([{ title: 'Dune', tmdbId: 438631, monitored: true }]);
+
+	assert.equal(cards[0]?.inLibrary, true);
+	assert.equal(cards[0]?.id, 1);
+	assert.ok(calls.includes('GET /movie'), 'the fallback path still reads the library');
+});

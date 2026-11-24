@@ -55,13 +55,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const client = getClient(type);
 
 		if (client instanceof RadarrClient) {
-			const library = await client.allMovies();
-			if (library.some((m) => m.tmdbId === sourceId)) {
-				return json({ error: 'Already in the library', inLibrary: true }, { status: 409 });
-			}
+			// The lookup resource carries the library id for a title that is already
+			// added, so the dedupe no longer needs GET /movie (AD-03). Only an arr
+			// that does not report ids falls back to the library list.
 			const movie = await client.getByTmdbId(sourceId);
 			if (!movie?.tmdbId) {
 				return json({ error: 'Movie not found on TMDB (via Radarr)' }, { status: 404 });
+			}
+			if (typeof movie.id === 'number' ? movie.id > 0 : (await client.allMovies()).some((m) => m.tmdbId === sourceId)) {
+				return json({ error: 'Already in the library', inLibrary: true }, { status: 409 });
 			}
 			const added = await client.add(movie, defaults);
 			try {
@@ -80,13 +82,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 
 		if (client instanceof SonarrClient) {
-			const library = await client.allSeries();
-			if (library.some((s) => s.tvdbId === sourceId)) {
-				return json({ error: 'Already in the library', inLibrary: true }, { status: 409 });
-			}
 			const series = await client.getByTvdbId(sourceId);
 			if (!series?.tvdbId) {
 				return json({ error: 'Series not found on TVDB (via Sonarr)' }, { status: 404 });
+			}
+			if (typeof series.id === 'number' ? series.id > 0 : (await client.allSeries()).some((s) => s.tvdbId === sourceId)) {
+				return json({ error: 'Already in the library', inLibrary: true }, { status: 409 });
 			}
 			const added = await client.add(series, defaults);
 			try {
