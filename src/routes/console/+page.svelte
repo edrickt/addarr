@@ -77,12 +77,12 @@
 	let blockPage = $state(1);
 	const libItems = $derived(((data?.items as Item[]) ?? []) as Item[]);
 
-	async function load() {
+	async function load(forPage: number) {
 		const seq = ++loadSeq; // guard against out-of-order responses when switching tabs quickly
 		loading = true;
 		msg = null;
 		try {
-			const pageQs = tab === 'history' ? `&page=${histPage}` : tab === 'blocklist' ? `&page=${blockPage}` : '';
+			const pageQs = tab === 'history' || tab === 'blocklist' ? `&page=${forPage}` : '';
 			const res = await fetch(`/api/console/${tab}?service=${service}${pageQs}`, { cache: 'no-store' });
 			const json = await res.json().catch(() => ({}));
 			if (seq !== loadSeq) return; // superseded by a newer tab/service switch
@@ -102,13 +102,19 @@
 			if (seq === loadSeq) loading = false;
 		}
 	}
+	// The page number is passed in, never read from inside the reload effect:
+	// the effect also resets these counters, and a read there made every page
+	// change re-run the reset and snap back to page 1 (AD-01).
+	function currentPage(): number {
+		return tab === 'history' ? histPage : tab === 'blocklist' ? blockPage : 1;
+	}
 	$effect(() => {
 		tab;
 		service;
 		libPage = 1;
 		histPage = 1;
 		blockPage = 1;
-		load();
+		load(1);
 		loadSummary();
 	});
 
@@ -126,7 +132,7 @@
 				: { kind: 'error', text: out.error ?? 'Failed' };
 			if (res.ok) {
 				closeDialogs();
-				await load();
+				await load(currentPage());
 				loadSummary();
 			}
 			return res.ok;
@@ -419,9 +425,9 @@
 				{/each}
 			</ul>
 			<div class="pager">
-				<button class="secondary" disabled={histPage <= 1 || loading} onclick={() => { histPage--; load(); }}>Previous</button>
+				<button class="secondary" disabled={histPage <= 1 || loading} onclick={() => { histPage--; load(histPage); }}>Previous</button>
 				<span class="hint">Page {histPage}</span>
-				<button class="secondary" disabled={((data.items as unknown[]) ?? []).length < 25 || loading} onclick={() => { histPage++; load(); }}>Next</button>
+				<button class="secondary" disabled={((data.items as unknown[]) ?? []).length < 25 || loading} onclick={() => { histPage++; load(histPage); }}>Next</button>
 			</div>
 		</div>
 
@@ -480,9 +486,9 @@
 				{/each}
 			</ul>
 			<div class="pager">
-				<button class="secondary" disabled={blockPage <= 1 || loading} onclick={() => { blockPage--; load(); }}>Previous</button>
+				<button class="secondary" disabled={blockPage <= 1 || loading} onclick={() => { blockPage--; load(blockPage); }}>Previous</button>
 				<span class="hint">Page {blockPage}</span>
-				<button class="secondary" disabled={((data.items as unknown[]) ?? []).length < 25 || loading} onclick={() => { blockPage++; load(); }}>Next</button>
+				<button class="secondary" disabled={((data.items as unknown[]) ?? []).length < 25 || loading} onclick={() => { blockPage++; load(blockPage); }}>Next</button>
 			</div>
 		</div>
 
